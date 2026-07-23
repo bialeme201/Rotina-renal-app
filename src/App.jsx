@@ -225,6 +225,12 @@ const ARTIGOS = [
   },
 ];
 
+const BACKUP_KEYS = [
+  "diary-entries", "qol-scores", "budget-data", "exames-data", "gastos-data",
+  "peso-fotos-data", "agenda-data", "recorrentes-data", "recorrentes-checks-data",
+  "profile-data", "diario-intro-seen",
+];
+
 export default function App() {
   const [tab, setTab] = useState("diario");
   const [loading, setLoading] = useState(true);
@@ -263,6 +269,12 @@ export default function App() {
   const [showScoreInfo, setShowScoreInfo] = useState(false);
   const [pushStatus, setPushStatus] = useState("checking");
   const [pushError, setPushError] = useState("");
+  const [lastBackupDate, setLastBackupDate] = useState(null);
+  const [backupReminderSnoozedUntil, setBackupReminderSnoozedUntil] = useState(null);
+  const [backupMsg, setBackupMsg] = useState("");
+  const [importError, setImportError] = useState("");
+  const [pendingImport, setPendingImport] = useState(null);
+  const backupFileInputRef = useRef(null);
 
   const examGroups = {};
   exames.forEach((ex) => {
@@ -399,6 +411,14 @@ export default function App() {
       } catch (err) {
         setShowDiarioIntro(true);
       }
+      try {
+        const lb = await window.storage.get("backup-last-export");
+        if (lb && lb.value) setLastBackupDate(lb.value);
+      } catch (err) {}
+      try {
+        const sn = await window.storage.get("backup-reminder-snoozed-until");
+        if (sn && sn.value) setBackupReminderSnoozedUntil(sn.value);
+      } catch (err) {}
       setLoading(false);
     }
     load();
@@ -525,6 +545,81 @@ export default function App() {
     }
   }
 
+  async function handleExportBackup() {
+    const data = {};
+    for (const key of BACKUP_KEYS) {
+      try {
+        const item = await window.storage.get(key);
+        if (item && item.value !== undefined) data[key] = item.value;
+      } catch (err) {}
+    }
+
+    const payload = { app: "rotina-renal", version: 1, exportedAt: new Date().toISOString(), data };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `backup-rotina-renal-${today}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    try {
+      await window.storage.set("backup-last-export", today);
+      await window.storage.set("backup-reminder-snoozed-until", "");
+    } catch (err) {}
+    setLastBackupDate(today);
+    setBackupReminderSnoozedUntil(null);
+    setBackupMsg("Backup exportado — confira a pasta de downloads do seu celular.");
+    setTimeout(() => setBackupMsg(""), 4500);
+  }
+
+  function handleImportFileSelected(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setImportError("");
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        if (!parsed || typeof parsed !== "object" || !parsed.data || typeof parsed.data !== "object") {
+          setImportError("Esse arquivo não parece ser um backup válido do Rotina Renal.");
+          return;
+        }
+        setPendingImport(parsed);
+      } catch (err) {
+        setImportError("Não foi possível ler esse arquivo. Confira se é o JSON exportado pelo app.");
+      }
+    };
+    reader.onerror = () => setImportError("Não foi possível ler esse arquivo.");
+    reader.readAsText(file);
+  }
+
+  async function confirmImportBackup() {
+    if (!pendingImport) return;
+    for (const [key, value] of Object.entries(pendingImport.data)) {
+      if (!BACKUP_KEYS.includes(key)) continue;
+      try {
+        await window.storage.set(key, value);
+      } catch (err) {}
+    }
+    setPendingImport(null);
+    if (backupFileInputRef.current) backupFileInputRef.current.value = "";
+    window.location.reload();
+  }
+
+  function cancelImportBackup() {
+    setPendingImport(null);
+    if (backupFileInputRef.current) backupFileInputRef.current.value = "";
+  }
+
+  function snoozeBackupReminder() {
+    const snoozeUntil = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+    setBackupReminderSnoozedUntil(snoozeUntil);
+    window.storage.set("backup-reminder-snoozed-until", snoozeUntil).catch(() => {});
+  }
+
   async function dismissDiarioIntro() {
     setShowDiarioIntro(false);
     try {
@@ -568,6 +663,13 @@ export default function App() {
     todayEntry.humor === "Tranquilo" &&
     todayEntry.urina === "Normal" &&
     (todayEntry.corUrina || "Normal") === "Normal";
+
+  const daysSinceBackup = lastBackupDate
+    ? Math.floor((new Date(today + "T12:00:00") - new Date(lastBackupDate + "T12:00:00")) / 86400000)
+    : null;
+  const showBackupReminder =
+    (daysSinceBackup === null || daysSinceBackup >= 30) &&
+    (!backupReminderSnoozedUntil || today > backupReminderSnoozedUntil);
 
   if (loading) {
     return (
@@ -677,6 +779,30 @@ export default function App() {
               <div style={{ background: "#FBE0DA", border: `1px solid ${TERRACOTTA}`, borderRadius: 12, padding: "14px 16px", marginBottom: 14 }}>
                 <div style={{ fontSize: 12.5, color: INK }}>
                   Notamos que {profile && profile.nome ? profile.nome : "seu gato"} esteve mais quieto ou comendo pouco nos últimos 3 dias. Que tal mandar uma mensagem para o veterinário para checar se vale ajustar alguma coisa?
+                </div>
+              </div>
+            )}
+
+            {showBackupReminder && (
+              <div style={{ background: "rgba(42,42,42,0.04)", borderRadius: 12, padding: "12px 16px", marginBottom: 14 }}>
+                <div style={{ fontSize: 12, color: INK, marginBottom: 10 }}>
+                  {lastBackupDate
+                    ? "Já faz um tempo que você não exporta seu backup — quer fazer agora?"
+                    : "Você ainda não exportou um backup dos dados desse app — vale fazer isso de vez em quando."}
+                </div>
+                <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+                  <button
+                    onClick={() => setTab("recursos")}
+                    style={{ border: "none", background: TEAL, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 11.5, padding: "7px 14px", borderRadius: 9, cursor: "pointer" }}
+                  >
+                    Exportar agora
+                  </button>
+                  <button
+                    onClick={snoozeBackupReminder}
+                    style={{ border: "none", background: "none", color: GREY, fontSize: 11.5, fontWeight: 600, cursor: "pointer", padding: 0 }}
+                  >
+                    Lembrar depois
+                  </button>
                 </div>
               </div>
             )}
@@ -1589,6 +1715,52 @@ export default function App() {
             </div>
 
             <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 14, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
+              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Backup dos dados</div>
+              <div style={{ fontSize: 11.5, color: GREY, marginBottom: 14 }}>
+                Todos os dados ficam guardados só neste aparelho. Exporte de vez em quando pra não correr risco de perder — e pra poder restaurar se trocar de celular.
+              </div>
+
+              <div style={{ fontSize: 11, color: GREY, marginBottom: 14 }}>
+                {lastBackupDate
+                  ? `Último backup: ${new Date(lastBackupDate + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}`
+                  : "Você ainda não fez nenhum backup."}
+              </div>
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={handleExportBackup}
+                  style={{ flex: 1, padding: 11, borderRadius: 13, border: "none", background: TEAL, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}
+                >
+                  ⬇️ Exportar backup
+                </button>
+                <button
+                  onClick={() => backupFileInputRef.current && backupFileInputRef.current.click()}
+                  style={{ flex: 1, padding: 11, borderRadius: 13, border: `1.5px solid ${TEAL}`, background: "#fff", color: TEAL, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}
+                >
+                  ⬆️ Importar backup
+                </button>
+                <input
+                  ref={backupFileInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  style={{ display: "none" }}
+                  onChange={handleImportFileSelected}
+                />
+              </div>
+
+              {backupMsg && (
+                <div style={{ marginTop: 10, padding: "9px 14px", borderRadius: 10, background: "rgba(59,110,100,0.14)", color: TEAL, fontSize: 12, fontWeight: 700, textAlign: "center" }}>
+                  {backupMsg}
+                </div>
+              )}
+              {importError && (
+                <div style={{ marginTop: 10, padding: "9px 14px", borderRadius: 10, background: "#FBE0DA", color: TERRACOTTA, fontSize: 12, fontWeight: 700, textAlign: "center" }}>
+                  {importError}
+                </div>
+              )}
+            </div>
+
+            <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 14, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
               <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Glossário</div>
               {GLOSSARIO.map((g, i) => (
                 <div key={i} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: i < GLOSSARIO.length - 1 ? "1px solid rgba(42,42,42,0.06)" : "none" }}>
@@ -2109,6 +2281,36 @@ export default function App() {
             >
               Entendi
             </button>
+          </div>
+        </div>
+      )}
+
+      {pendingImport && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(35,35,35,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 50 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 26, maxWidth: 380, width: "100%" }}>
+            <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 17, marginBottom: 12 }}>Restaurar este backup?</div>
+            <div style={{ fontSize: 13, color: INK, lineHeight: 1.6, marginBottom: 10 }}>
+              Isso vai <strong>substituir os dados atuais</strong> pelos deste arquivo — diário, exames, agenda, remédios, gastos e perfil. Não dá pra desfazer depois.
+            </div>
+            {pendingImport.exportedAt && (
+              <div style={{ fontSize: 11.5, color: GREY, marginBottom: 18 }}>
+                Backup gerado em {new Date(pendingImport.exportedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}.
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={cancelImportBackup}
+                style={{ flex: 1, padding: 12, borderRadius: 14, border: `1px solid ${GREY}`, background: "#fff", color: INK, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmImportBackup}
+                style={{ flex: 1, padding: 12, borderRadius: 14, border: "none", background: TERRACOTTA, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+              >
+                Sim, restaurar
+              </button>
+            </div>
           </div>
         </div>
       )}
