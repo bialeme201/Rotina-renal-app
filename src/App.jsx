@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
+import { subscribeToPush, syncSchedule, getPushStatus, pushSupported } from "./push.js";
 
 const TEAL = "#3B6E64";
 const TERRACOTTA = "#C4622D";
@@ -259,6 +260,8 @@ export default function App() {
   const [openQolInfo, setOpenQolInfo] = useState(null);
   const [openArtigo, setOpenArtigo] = useState(null);
   const [showScoreInfo, setShowScoreInfo] = useState(false);
+  const [pushStatus, setPushStatus] = useState("checking");
+  const [pushError, setPushError] = useState("");
 
   const examGroups = {};
   exames.forEach((ex) => {
@@ -398,7 +401,26 @@ export default function App() {
       setLoading(false);
     }
     load();
+
+    if (pushSupported()) {
+      getPushStatus().then(setPushStatus);
+    } else {
+      setPushStatus("unsupported");
+    }
   }, []);
+
+  async function handleEnableNotifications() {
+    setPushStatus("loading");
+    setPushError("");
+    try {
+      await subscribeToPush();
+      setPushStatus("subscribed");
+      syncSchedule(profile && profile.nome, agendaItems, recorrentes);
+    } catch (err) {
+      setPushStatus("error");
+      setPushError(err.message || "Não foi possível ativar as notificações.");
+    }
+  }
 
   async function saveEntries(next) {
     setEntries(next);
@@ -462,6 +484,7 @@ export default function App() {
       await window.storage.set("agenda-data", JSON.stringify(next));
       flashSaved();
     } catch (err) {}
+    syncSchedule(profile && profile.nome, next, recorrentes);
   }
 
   async function saveRecorrentes(next) {
@@ -470,6 +493,7 @@ export default function App() {
       await window.storage.set("recorrentes-data", JSON.stringify(next));
       flashSaved();
     } catch (err) {}
+    syncSchedule(profile && profile.nome, agendaItems, next);
   }
 
   async function toggleRecorrenteCheck(medId) {
@@ -1119,6 +1143,29 @@ export default function App() {
 
         {tab === "agenda" && (
           <div>
+            {pushSupported() && pushStatus !== "subscribed" && (
+              <div style={{ background: "rgba(59,110,100,0.10)", border: `1px solid rgba(59,110,100,0.2)`, borderRadius: 16, padding: "14px 16px", marginBottom: 14 }}>
+                <div style={{ fontSize: 12.5, color: INK, marginBottom: 10 }}>
+                  Ative as notificações para receber um aviso no celular na hora do remédio e nos compromissos do dia — mesmo com o app fechado.
+                </div>
+                <button
+                  onClick={handleEnableNotifications}
+                  disabled={pushStatus === "loading"}
+                  style={{ border: "none", background: TEAL, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, padding: "9px 16px", borderRadius: 10, cursor: pushStatus === "loading" ? "wait" : "pointer" }}
+                >
+                  {pushStatus === "loading" ? "Ativando..." : "🔔 Ativar notificações"}
+                </button>
+                {pushStatus === "error" && (
+                  <div style={{ fontSize: 11, color: TERRACOTTA, marginTop: 8 }}>{pushError}</div>
+                )}
+              </div>
+            )}
+            {pushStatus === "subscribed" && (
+              <div style={{ fontSize: 11, color: TEAL, fontWeight: 700, marginBottom: 14 }}>
+                🔔 Notificações ativadas neste aparelho
+              </div>
+            )}
+
             <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 12, letterSpacing: "0.04em", textTransform: "uppercase", color: TERRACOTTA, marginBottom: 10 }}>Eventos únicos</div>
             <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 16, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
               <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Novo compromisso</div>
