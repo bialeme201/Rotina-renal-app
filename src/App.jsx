@@ -588,7 +588,7 @@ export default function App() {
 
   return (
     <div style={{ minHeight: "100vh", background: CREAM, fontFamily: "'Karla', Arial, sans-serif", color: INK, paddingBottom: 120 }}>
-      <div style={{ maxWidth: 460, margin: "0 auto", padding: "40px 20px 0" }}>
+      <div style={{ maxWidth: 460, margin: "0 auto", padding: "calc(24px + env(safe-area-inset-top, 0px)) 20px 0" }}>
 
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
           <label style={{
@@ -1636,7 +1636,7 @@ export default function App() {
             position: "absolute", inset: 0, bottom: 118, overflowY: "auto",
           }}>
           <div style={{
-            padding: "36px 24px 32px", display: "flex", flexDirection: "column",
+            padding: "calc(24px + env(safe-area-inset-top, 0px)) 24px 32px", display: "flex", flexDirection: "column",
             alignItems: "flex-start", maxWidth: 440, margin: "0 auto", width: "100%",
           }}>
             <h1 style={{
