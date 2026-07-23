@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import {
   NotebookPen, FlaskConical, HeartPulse, Wallet, BookOpen,
   Droplet, UtensilsCrossed, Smile, Waves, Syringe, Palette, Cat,
   ExternalLink, Info, Stethoscope, Calendar,
 } from "lucide-react";
+import { jsPDF } from "jspdf";
+import html2canvas from "html2canvas";
 
 const TEAL = "#3B6E64";
 const TERRACOTTA = "#C4622D";
@@ -37,6 +39,30 @@ function compressImage(file, maxWidth = 480) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+async function downloadPdf(node, filename) {
+  const canvas = await html2canvas(node, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
+  const imgData = canvas.toDataURL("image/png");
+  const pdf = new jsPDF({ unit: "pt", format: "a4" });
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const imgWidth = pageWidth;
+  const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+  let heightLeft = imgHeight;
+  let position = 0;
+  pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+  heightLeft -= pageHeight;
+
+  while (heightLeft > 0) {
+    position -= pageHeight;
+    pdf.addPage();
+    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+  }
+
+  pdf.save(filename);
 }
 
 function WaterBowl({ level }) {
@@ -227,6 +253,9 @@ export default function App() {
   const [draftProfile, setDraftProfile] = useState({ nome: "", idade: "", dataDiagnostico: "", estagio: "", vetNome: "", vetTelefone: "", rotinaHorarios: "", contatoEmergencia: "" });
   const [showReport, setShowReport] = useState(false);
   const [showManual, setShowManual] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(null);
+  const reportRef = useRef(null);
+  const manualRef = useRef(null);
   const [openQolInfo, setOpenQolInfo] = useState(null);
   const [openArtigo, setOpenArtigo] = useState(null);
   const [showScoreInfo, setShowScoreInfo] = useState(false);
@@ -455,6 +484,20 @@ export default function App() {
   function flashSaved() {
     setSaveMsg("Salvo");
     setTimeout(() => setSaveMsg(""), 1200);
+  }
+
+  async function handleSavePdf(type) {
+    const ref = type === "report" ? reportRef : manualRef;
+    if (!ref.current || pdfLoading) return;
+    setPdfLoading(type);
+    try {
+      const nome = (profile && profile.nome) || "gato";
+      const filename = type === "report" ? `resumo-${nome}.pdf` : `manual-do-tutor-${nome}.pdf`;
+      await downloadPdf(ref.current, filename);
+    } catch (err) {
+    } finally {
+      setPdfLoading(null);
+    }
   }
 
   async function dismissDiarioIntro() {
@@ -1809,36 +1852,38 @@ export default function App() {
       {showReport && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(35,35,35,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 50 }}>
           <div style={{ background: "#fff", borderRadius: 16, padding: 26, maxWidth: 420, width: "100%", maxHeight: "85vh", overflowY: "auto" }}>
-            <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 17, marginBottom: 2 }}>
-              Resumo — {profile && profile.nome ? profile.nome : "seu gato"}
-            </div>
-            <div style={{ fontSize: 11.5, color: GREY, marginBottom: 16 }}>Últimos 30 dias · gerado em {new Date().toLocaleDateString("pt-BR")}</div>
-
-            <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, marginBottom: 6 }}>Diário ({sortedDates.length} registros no total)</div>
-            {sortedDates.slice(0, 30).length === 0 && <div style={{ fontSize: 12, color: GREY, marginBottom: 14 }}>Nenhum registro ainda.</div>}
-            {sortedDates.slice(0, 30).map((date) => {
-              const e = entries[date];
-              return (
-                <div key={date} style={{ fontSize: 11.5, color: INK, marginBottom: 3 }}>
-                  <strong>{new Date(date + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}:</strong>{" "}
-                  água {e.agua.toLowerCase()}, apetite {e.apetite.toLowerCase()}, humor {e.humor.toLowerCase()}, urina {e.urina.toLowerCase()}
-                  {e.corUrina && e.corUrina !== "Normal" ? `, cor da urina: ${e.corUrina.toLowerCase()}` : ""}
-                  {e.soro === "Fiz" ? ", soro: feito" : ""}
-                  {e.nota ? ` — "${e.nota}"` : ""}
-                </div>
-              );
-            })}
-
-            <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, margin: "16px 0 6px" }}>Exames registrados</div>
-            {exames.length === 0 && <div style={{ fontSize: 12, color: GREY, marginBottom: 14 }}>Nenhum exame registrado ainda.</div>}
-            {exames.slice(0, 15).map((ex, i) => (
-              <div key={i} style={{ fontSize: 11.5, color: INK, marginBottom: 3 }}>
-                <strong>{ex.data && new Date(ex.data + "T12:00:00").toLocaleDateString("pt-BR")}:</strong> {ex.tipo} {ex.valor ? `— ${ex.valor}` : ""}{ex.obs ? ` (${ex.obs})` : ""}
+            <div ref={reportRef} style={{ background: "#fff" }}>
+              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 17, marginBottom: 2 }}>
+                Resumo — {profile && profile.nome ? profile.nome : "seu gato"}
               </div>
-            ))}
+              <div style={{ fontSize: 11.5, color: GREY, marginBottom: 16 }}>Últimos 30 dias · gerado em {new Date().toLocaleDateString("pt-BR")}</div>
 
-            <div style={{ fontSize: 10, color: GREY, fontStyle: "italic", margin: "16px 0", borderTop: "1px solid rgba(42,42,42,0.06)", paddingTop: 12 }}>
-              Resumo gerado pelo tutor a partir de observações registradas no app. Não constitui avaliação clínica.
+              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, marginBottom: 6 }}>Diário ({sortedDates.length} registros no total)</div>
+              {sortedDates.slice(0, 30).length === 0 && <div style={{ fontSize: 12, color: GREY, marginBottom: 14 }}>Nenhum registro ainda.</div>}
+              {sortedDates.slice(0, 30).map((date) => {
+                const e = entries[date];
+                return (
+                  <div key={date} style={{ fontSize: 11.5, color: INK, marginBottom: 3 }}>
+                    <strong>{new Date(date + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}:</strong>{" "}
+                    água {e.agua.toLowerCase()}, apetite {e.apetite.toLowerCase()}, humor {e.humor.toLowerCase()}, urina {e.urina.toLowerCase()}
+                    {e.corUrina && e.corUrina !== "Normal" ? `, cor da urina: ${e.corUrina.toLowerCase()}` : ""}
+                    {e.soro === "Fiz" ? ", soro: feito" : ""}
+                    {e.nota ? ` — "${e.nota}"` : ""}
+                  </div>
+                );
+              })}
+
+              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, margin: "16px 0 6px" }}>Exames registrados</div>
+              {exames.length === 0 && <div style={{ fontSize: 12, color: GREY, marginBottom: 14 }}>Nenhum exame registrado ainda.</div>}
+              {exames.slice(0, 15).map((ex, i) => (
+                <div key={i} style={{ fontSize: 11.5, color: INK, marginBottom: 3 }}>
+                  <strong>{ex.data && new Date(ex.data + "T12:00:00").toLocaleDateString("pt-BR")}:</strong> {ex.tipo} {ex.valor ? `— ${ex.valor}` : ""}{ex.obs ? ` (${ex.obs})` : ""}
+                </div>
+              ))}
+
+              <div style={{ fontSize: 10, color: GREY, fontStyle: "italic", margin: "16px 0", borderTop: "1px solid rgba(42,42,42,0.06)", paddingTop: 12 }}>
+                Resumo gerado pelo tutor a partir de observações registradas no app. Não constitui avaliação clínica.
+              </div>
             </div>
 
             <a
@@ -1860,10 +1905,11 @@ export default function App() {
 
             <div style={{ display: "flex", gap: 8 }}>
               <button
-                onClick={() => window.print()}
-                style={{ flex: 1, padding: 12, borderRadius: 14, border: "none", background: TERRACOTTA, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+                onClick={() => handleSavePdf("report")}
+                disabled={pdfLoading === "report"}
+                style={{ flex: 1, padding: 12, borderRadius: 14, border: "none", background: TERRACOTTA, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: pdfLoading === "report" ? "wait" : "pointer", opacity: pdfLoading === "report" ? 0.7 : 1 }}
               >
-                Imprimir / Salvar PDF
+                {pdfLoading === "report" ? "Gerando PDF..." : "Salvar PDF"}
               </button>
               <button
                 onClick={() => setShowReport(false)}
@@ -1879,34 +1925,36 @@ export default function App() {
       {showManual && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(35,35,35,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 50 }}>
           <div style={{ background: "#fff", borderRadius: 16, padding: 26, maxWidth: 420, width: "100%", maxHeight: "85vh", overflowY: "auto" }}>
-            <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 18, marginBottom: 2 }}>
-              Manual do Tutor — {profile && profile.nome ? profile.nome : "seu gato"}
-            </div>
-            <div style={{ fontSize: 11.5, color: GREY, marginBottom: 18 }}>Folha única para deixar com quem cuidar dele</div>
-
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, marginBottom: 4 }}>Rotina de horários</div>
-              <div style={{ fontSize: 13, color: INK, whiteSpace: "pre-line" }}>
-                {(profile && profile.rotinaHorarios) || "Nenhuma rotina cadastrada ainda — edite o perfil para adicionar."}
+            <div ref={manualRef} style={{ background: "#fff" }}>
+              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 18, marginBottom: 2 }}>
+                Manual do Tutor — {profile && profile.nome ? profile.nome : "seu gato"}
               </div>
-            </div>
+              <div style={{ fontSize: 11.5, color: GREY, marginBottom: 18 }}>Folha única para deixar com quem cuidar dele</div>
 
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, marginBottom: 4 }}>Veterinário</div>
-              <div style={{ fontSize: 13, color: INK }}>
-                {(profile && profile.vetNome) || "Não informado"}{profile && profile.vetTelefone ? ` — ${profile.vetTelefone}` : ""}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, marginBottom: 4 }}>Rotina de horários</div>
+                <div style={{ fontSize: 13, color: INK, whiteSpace: "pre-line" }}>
+                  {(profile && profile.rotinaHorarios) || "Nenhuma rotina cadastrada ainda — edite o perfil para adicionar."}
+                </div>
               </div>
-            </div>
 
-            <div style={{ marginBottom: 18 }}>
-              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, marginBottom: 4 }}>Contato de emergência</div>
-              <div style={{ fontSize: 13, color: INK }}>
-                {(profile && profile.contatoEmergencia) || "Não informado"}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, marginBottom: 4 }}>Veterinário</div>
+                <div style={{ fontSize: 13, color: INK }}>
+                  {(profile && profile.vetNome) || "Não informado"}{profile && profile.vetTelefone ? ` — ${profile.vetTelefone}` : ""}
+                </div>
               </div>
-            </div>
 
-            <div style={{ fontSize: 10, color: GREY, fontStyle: "italic", margin: "0 0 16px", borderTop: "1px solid rgba(42,42,42,0.06)", paddingTop: 12 }}>
-              Em qualquer dúvida ou mudança de comportamento, ligue para o veterinário. Este material é só organização — não substitui orientação profissional.
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, marginBottom: 4 }}>Contato de emergência</div>
+                <div style={{ fontSize: 13, color: INK }}>
+                  {(profile && profile.contatoEmergencia) || "Não informado"}
+                </div>
+              </div>
+
+              <div style={{ fontSize: 10, color: GREY, fontStyle: "italic", margin: "0 0 16px", borderTop: "1px solid rgba(42,42,42,0.06)", paddingTop: 12 }}>
+                Em qualquer dúvida ou mudança de comportamento, ligue para o veterinário. Este material é só organização — não substitui orientação profissional.
+              </div>
             </div>
 
             <a
@@ -1925,10 +1973,11 @@ export default function App() {
 
             <div style={{ display: "flex", gap: 8 }}>
               <button
-                onClick={() => window.print()}
-                style={{ flex: 1, padding: 12, borderRadius: 14, border: "none", background: TERRACOTTA, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+                onClick={() => handleSavePdf("manual")}
+                disabled={pdfLoading === "manual"}
+                style={{ flex: 1, padding: 12, borderRadius: 14, border: "none", background: TERRACOTTA, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: pdfLoading === "manual" ? "wait" : "pointer", opacity: pdfLoading === "manual" ? 0.7 : 1 }}
               >
-                Imprimir / Salvar PDF
+                {pdfLoading === "manual" ? "Gerando PDF..." : "Salvar PDF"}
               </button>
               <button
                 onClick={() => setShowManual(false)}
