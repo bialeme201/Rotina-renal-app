@@ -1,0 +1,24 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" fill="#3B6E64"/>
+
+  <!-- ears -->
+  <polygon points="178,208 218,120 258,196" fill="#F4F1EA"/>
+  <polygon points="334,208 294,120 254,196" fill="#F4F1EA"/>
+
+  <!-- face -->
+  <circle cx="256" cy="270" r="112" fill="#F4F1EA"/>
+
+  <!-- eyes -->
+  <circle cx="216" cy="256" r="11" fill="#2A2A2A"/>
+  <circle cx="296" cy="256" r="11" fill="#2A2A2A"/>
+
+  <!-- nose -->
+  <polygon points="256,286 246,300 266,300" fill="#C4622D"/>
+
+  <!-- whisker hint -->
+  <path d="M188 296 Q210 306 234 300" stroke="#2A2A2A" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.35"/>
+  <path d="M324 296 Q302 306 278 300" stroke="#2A2A2A" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.35"/>
+
+  <!-- water droplet accent -->
+  <path d="M350 330 C350 312 372 288 372 288 C372 288 394 312 394 330 C394 342.5 383.9 352.6 371.4 352.6 C358.9 352.6 350 342.5 350 330 Z" fill="#C4622D"/>
+</svg>
