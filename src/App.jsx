@@ -247,6 +247,7 @@ export default function App() {
     duracao: "continuo", dataInicio: todayKey(), dataFim: "",
   });
   const [saveMsg, setSaveMsg] = useState("");
+  const [medSavedMsg, setMedSavedMsg] = useState("");
   const [showDiarioIntro, setShowDiarioIntro] = useState(false);
   const [profile, setProfile] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -1314,7 +1315,7 @@ export default function App() {
               />
 
               <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>Dias da semana</label>
-              <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+              <div style={{ display: "flex", gap: 4, marginBottom: 8, alignItems: "center" }}>
                 {["D", "S", "T", "Q", "Q", "S", "S"].map((letra, idx) => {
                   const active = novoRecorrente.dias.includes(idx);
                   return (
@@ -1335,6 +1336,18 @@ export default function App() {
                   );
                 })}
               </div>
+              <button
+                onClick={() => {
+                  const allSelected = novoRecorrente.dias.length === 7;
+                  setNovoRecorrente({ ...novoRecorrente, dias: allSelected ? [] : [0, 1, 2, 3, 4, 5, 6] });
+                }}
+                style={{
+                  border: "none", background: "none", color: TEAL, fontSize: 11.5, fontWeight: 700,
+                  cursor: "pointer", padding: 0, marginBottom: 10, textDecoration: "underline",
+                }}
+              >
+                {novoRecorrente.dias.length === 7 ? "Desmarcar todos" : "Marcar todos os dias"}
+              </button>
 
               <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>Duração</label>
               <Segmented
@@ -1370,13 +1383,56 @@ export default function App() {
                 onClick={() => {
                   if (!novoRecorrente.nome || novoRecorrente.dias.length === 0) return;
                   saveRecorrentes([...recorrentes, { ...novoRecorrente, id: Date.now() }]);
+                  setMedSavedMsg(`✓ ${novoRecorrente.nome} incluído na agenda`);
+                  setTimeout(() => setMedSavedMsg(""), 2800);
                   setNovoRecorrente({ nome: "", horario: "", dias: [0, 1, 2, 3, 4, 5, 6], duracao: "continuo", dataInicio: todayKey(), dataFim: "" });
                 }}
                 style={{ width: "100%", padding: 11, borderRadius: 13, border: "none", background: TEAL, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 14 }}
               >
                 Salvar remédio
               </button>
+
+              {medSavedMsg && (
+                <div style={{
+                  marginTop: 10, padding: "9px 14px", borderRadius: 10, background: "rgba(59,110,100,0.14)",
+                  color: TEAL, fontSize: 12.5, fontWeight: 700, textAlign: "center",
+                }}>
+                  {medSavedMsg}
+                </div>
+              )}
             </div>
+
+            {recorrentes.length > 0 && (
+              <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 20, marginBottom: 14, boxShadow: "0 20px 40px rgba(0,0,0,0.04)", overflowX: "auto" }}>
+                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 12 }}>Visão da semana</div>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 320 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: "left", fontSize: 10.5, color: GREY, fontWeight: 700, paddingBottom: 8 }}></th>
+                      {["D", "S", "T", "Q", "Q", "S", "S"].map((letra, idx) => (
+                        <th key={idx} style={{ fontSize: 10.5, color: GREY, fontWeight: 700, paddingBottom: 8, width: 26 }}>{letra}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recorrentes.map((med) => (
+                      <tr key={med.id}>
+                        <td style={{ fontSize: 11.5, fontWeight: 700, color: INK, paddingRight: 8, paddingTop: 6, paddingBottom: 6, whiteSpace: "nowrap" }}>{med.nome}</td>
+                        {[0, 1, 2, 3, 4, 5, 6].map((idx) => (
+                          <td key={idx} style={{ textAlign: "center", paddingTop: 6, paddingBottom: 6 }}>
+                            {med.dias.includes(idx) ? (
+                              <div style={{ width: 8, height: 8, borderRadius: "50%", background: TEAL, margin: "0 auto" }} />
+                            ) : (
+                              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(42,42,42,0.08)", margin: "0 auto" }} />
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             {recorrentes.length > 0 && (
               <div>
