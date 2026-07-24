@@ -241,6 +241,9 @@ export default function App() {
   const [budget, setBudget] = useState({ items: [], reservaMensal: 100, meses: 0 });
   const [exames, setExames] = useState([]);
   const [novoExame, setNovoExame] = useState({ data: "", tipo: "", valor: "", obs: "", foto: null });
+  const [editingExameIndex, setEditingExameIndex] = useState(null);
+  const [deleteExameIndex, setDeleteExameIndex] = useState(null);
+  const exameFormRef = useRef(null);
   const [gastos, setGastos] = useState([]);
   const [novoGasto, setNovoGasto] = useState({ data: todayKey(), categoria: "Ração", valor: "", frequencia: "Não se repete", vezesPorSemana: 1 });
   const [registrosPeso, setRegistrosPeso] = useState([]);
@@ -496,6 +499,28 @@ export default function App() {
   async function saveExames(next) {
     setExames(next);
     if (await persist("exames-data", JSON.stringify(next))) flashSaved();
+  }
+
+  function startEditExame(index) {
+    const ex = exames[index];
+    if (!ex) return;
+    setEditingExameIndex(index);
+    setNovoExame({ data: ex.data || "", tipo: ex.tipo || "", valor: ex.valor || "", obs: ex.obs || "", foto: ex.foto || null });
+    if (exameFormRef.current) exameFormRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function cancelEditExame() {
+    setEditingExameIndex(null);
+    setNovoExame({ data: "", tipo: "", valor: "", obs: "", foto: null });
+  }
+
+  function confirmDeleteExame() {
+    if (deleteExameIndex === null) return;
+    const next = exames.filter((_, i) => i !== deleteExameIndex);
+    saveExames(next);
+    setEditingExameIndex(null);
+    setNovoExame({ data: "", tipo: "", valor: "", obs: "", foto: null });
+    setDeleteExameIndex(null);
   }
 
   async function saveGastos(next) {
@@ -1653,8 +1678,8 @@ export default function App() {
 
         {tab === "exames" && (
           <div>
-            <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
-              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Novo registro</div>
+            <div ref={exameFormRef} style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
+              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{editingExameIndex !== null ? "Editar registro" : "Novo registro"}</div>
               <div style={{ fontSize: 11.5, color: GREY, marginBottom: 14 }}>Guarde o resultado do jeito que veio — o app não interpreta se o valor está bom ou ruim, só organiza.</div>
 
               <label style={{ fontSize: 12, color: GREY }}>Data</label>
@@ -1718,32 +1743,63 @@ export default function App() {
               <button
                 onClick={() => {
                   if (!novoExame.data || !novoExame.tipo) return;
-                  saveExames([{ ...novoExame }, ...exames]);
+                  if (editingExameIndex !== null) {
+                    const next = exames.map((ex, i) => (i === editingExameIndex ? { ...novoExame } : ex));
+                    saveExames(next);
+                    setEditingExameIndex(null);
+                  } else {
+                    saveExames([{ ...novoExame }, ...exames]);
+                  }
                   setNovoExame({ data: "", tipo: "", valor: "", obs: "", foto: null });
                 }}
                 style={{ width: "100%", padding: 11, borderRadius: 13, border: "none", background: TERRACOTTA, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
               >
-                Salvar registro
+                {editingExameIndex !== null ? "Salvar alterações" : "Salvar registro"}
               </button>
+              {editingExameIndex !== null && (
+                <button
+                  onClick={cancelEditExame}
+                  style={{ width: "100%", padding: 10, borderRadius: 13, border: "none", background: "none", color: GREY, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, cursor: "pointer", marginTop: 4 }}
+                >
+                  Cancelar edição
+                </button>
+              )}
             </div>
 
             {exames.length > 0 && (
               <>
-                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Histórico, agrupado por exame</div>
+                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 2 }}>Histórico, agrupado por exame</div>
+                <div style={{ fontSize: 10.5, color: GREY, marginBottom: 10 }}>Toque num registro pra editar, ou no 🗑 pra apagar</div>
                 {Object.values(examGroups).map((group, gi) => (
                   <div key={gi} style={{ background: "#fff", borderRadius: 12, padding: "16px 18px", marginBottom: 12, border: "1px solid rgba(42,42,42,0.06)" }}>
                     <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 16, color: TEAL, marginBottom: 10, textTransform: "capitalize" }}>
                       {group.label}
                     </div>
-                    {group.items.map((ex, i) => (
-                      <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "8px 0", borderBottom: i < group.items.length - 1 ? "1px solid #F2EEE4" : "none" }}>
-                        <span style={{ fontSize: 12, color: GREY }}>
-                          {ex.data && new Date(ex.data + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
-                          {ex.foto ? " 📎" : ""}
-                        </span>
-                        <span style={{ fontSize: 19, fontWeight: 800, color: INK, fontFamily: "'Poppins', sans-serif" }}>{ex.valor || "—"}</span>
-                      </div>
-                    ))}
+                    {group.items.map((ex, i) => {
+                      const exameIndex = exames.indexOf(ex);
+                      return (
+                        <div
+                          key={i}
+                          onClick={() => startEditExame(exameIndex)}
+                          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: i < group.items.length - 1 ? "1px solid #F2EEE4" : "none", cursor: "pointer" }}
+                        >
+                          <span style={{ fontSize: 12, color: GREY }}>
+                            {ex.data && new Date(ex.data + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
+                            {ex.foto ? " 📎" : ""}
+                          </span>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <span style={{ fontSize: 19, fontWeight: 800, color: INK, fontFamily: "'Poppins', sans-serif" }}>{ex.valor || "—"}</span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setDeleteExameIndex(exameIndex); }}
+                              style={{ border: "none", background: "none", color: GREY, fontSize: 15, cursor: "pointer", padding: 4, lineHeight: 1 }}
+                              aria-label="Apagar exame"
+                            >
+                              🗑
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                     {group.items.some((ex) => ex.obs) && (
                       <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #F2EEE4" }}>
                         {group.items.filter((ex) => ex.obs).map((ex, i) => (
@@ -2377,6 +2433,38 @@ export default function App() {
                 style={{ flex: 1, padding: 12, borderRadius: 14, border: "none", background: TERRACOTTA, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
               >
                 Sim, restaurar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteExameIndex !== null && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(35,35,35,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 50 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 26, maxWidth: 360, width: "100%" }}>
+            <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 17, marginBottom: 12 }}>Apagar esse exame?</div>
+            <div style={{ fontSize: 13, color: INK, lineHeight: 1.6, marginBottom: 18 }}>
+              {exames[deleteExameIndex] && (
+                <>
+                  <strong>{exames[deleteExameIndex].tipo}</strong>
+                  {exames[deleteExameIndex].valor ? ` — ${exames[deleteExameIndex].valor}` : ""}
+                  {exames[deleteExameIndex].data ? ` (${new Date(exames[deleteExameIndex].data + "T12:00:00").toLocaleDateString("pt-BR")})` : ""}
+                  {" "}vai ser apagado. Essa ação não pode ser desfeita.
+                </>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => setDeleteExameIndex(null)}
+                style={{ flex: 1, padding: 12, borderRadius: 14, border: `1px solid ${GREY}`, background: "#fff", color: INK, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDeleteExame}
+                style={{ flex: 1, padding: 12, borderRadius: 14, border: "none", background: TERRACOTTA, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+              >
+                Apagar
               </button>
             </div>
           </div>
