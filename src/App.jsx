@@ -9,6 +9,7 @@ import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import { subscribeToPush, syncSchedule, getPushStatus, pushSupported } from "./push.js";
 import { getStorageEstimate } from "./storage.js";
+import { track } from "@vercel/analytics/react";
 
 const TEAL = "#3B6E64";
 const TERRACOTTA = "#C4622D";
@@ -369,6 +370,10 @@ export default function App() {
   });
 
   useEffect(() => {
+    track("view_tab", { tab });
+  }, [tab]);
+
+  useEffect(() => {
     async function load() {
       try {
         const e = await window.storage.get("diary-entries");
@@ -565,6 +570,7 @@ export default function App() {
       const nome = (profile && profile.nome) || "gato";
       const filename = type === "report" ? `resumo-${nome}.pdf` : `manual-do-tutor-${nome}.pdf`;
       await downloadPdf(ref.current, filename);
+      track("export_pdf", { type });
     } catch (err) {
     } finally {
       setPdfLoading(null);
@@ -884,7 +890,10 @@ export default function App() {
             )}
 
             <button
-              onClick={() => saveEntries({ ...entries, [selectedDiaryDate]: { agua: "Normal", apetite: "Normal", humor: "Tranquilo", urina: "Normal", corUrina: "Normal", soro: selectedEntry.soro || "Não fiz", nota: selectedEntry.nota } })}
+              onClick={() => {
+                track("mark_day_normal");
+                saveEntries({ ...entries, [selectedDiaryDate]: { agua: "Normal", apetite: "Normal", humor: "Tranquilo", urina: "Normal", corUrina: "Normal", soro: selectedEntry.soro || "Não fiz", nota: selectedEntry.nota } });
+              }}
               style={{
                 width: "100%", display: "flex", alignItems: "center", gap: 12, textAlign: "left",
                 padding: "12px 16px", borderRadius: 16, border: "none", cursor: "pointer", marginBottom: 12,
@@ -1600,6 +1609,7 @@ export default function App() {
               <button
                 onClick={() => {
                   if (!novoRecorrente.nome || novoRecorrente.dias.length === 0) return;
+                  track("add_recurring_med");
                   saveRecorrentes([...recorrentes, { ...novoRecorrente, id: Date.now() }]);
                   setMedSavedMsg(`✓ ${novoRecorrente.nome} incluído na agenda`);
                   setTimeout(() => setMedSavedMsg(""), 2800);
