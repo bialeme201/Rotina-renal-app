@@ -8,6 +8,7 @@ import {
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import { subscribeToPush, syncSchedule, getPushStatus, pushSupported } from "./push.js";
+import { getStorageEstimate } from "./storage.js";
 
 const TEAL = "#3B6E64";
 const TERRACOTTA = "#C4622D";
@@ -20,7 +21,7 @@ function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function compressImage(file, maxWidth = 480) {
+function compressImage(file, maxWidth = 360, quality = 0.6) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -32,7 +33,7 @@ function compressImage(file, maxWidth = 480) {
         canvas.height = img.height * scale;
         const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", 0.72));
+        resolve(canvas.toDataURL("image/jpeg", quality));
       };
       img.onerror = reject;
       img.src = e.target.result;
@@ -269,6 +270,7 @@ export default function App() {
   const [showScoreInfo, setShowScoreInfo] = useState(false);
   const [pushStatus, setPushStatus] = useState("checking");
   const [pushError, setPushError] = useState("");
+  const [storageNotice, setStorageNotice] = useState(null);
   const [lastBackupDate, setLastBackupDate] = useState(null);
   const [backupReminderSnoozedUntil, setBackupReminderSnoozedUntil] = useState(null);
   const [backupMsg, setBackupMsg] = useState("");
@@ -443,77 +445,75 @@ export default function App() {
     }
   }
 
+  async function persist(key, value) {
+    try {
+      await window.storage.set(key, value);
+      setStorageNotice((n) => (n && n.type === "error" ? null : n));
+      return true;
+    } catch (err) {
+      setStorageNotice({
+        type: "error",
+        message: "Não foi possível salvar — o armazenamento do app está cheio. Exporte um backup e remova fotos antigas.",
+      });
+      return false;
+    }
+  }
+
+  function checkStorageBeforeUpload() {
+    const { percentUsed } = getStorageEstimate();
+    if (percentUsed >= 0.8) {
+      setStorageNotice({
+        type: "warning",
+        message: `O armazenamento do app está quase cheio (${Math.round(percentUsed * 100)}% usado). Exporte um backup e remova fotos antigas antes de adicionar mais.`,
+      });
+    }
+  }
+
   async function saveEntries(next) {
     setEntries(next);
-    try {
-      await window.storage.set("diary-entries", JSON.stringify(next));
-      flashSaved();
-    } catch (err) {}
+    if (await persist("diary-entries", JSON.stringify(next))) flashSaved();
   }
 
   async function saveQol(next) {
     setQol(next);
-    try {
-      await window.storage.set("qol-scores", JSON.stringify(next));
-      flashSaved();
-    } catch (err) {}
+    if (await persist("qol-scores", JSON.stringify(next))) flashSaved();
   }
 
   async function saveBudget(next) {
     setBudget(next);
-    try {
-      await window.storage.set("budget-data", JSON.stringify(next));
-      flashSaved();
-    } catch (err) {}
+    if (await persist("budget-data", JSON.stringify(next))) flashSaved();
   }
 
   async function saveProfile(next) {
     setProfile(next);
-    try {
-      await window.storage.set("profile-data", JSON.stringify(next));
-    } catch (err) {}
+    await persist("profile-data", JSON.stringify(next));
     setShowOnboarding(false);
   }
 
   async function saveExames(next) {
     setExames(next);
-    try {
-      await window.storage.set("exames-data", JSON.stringify(next));
-      flashSaved();
-    } catch (err) {}
+    if (await persist("exames-data", JSON.stringify(next))) flashSaved();
   }
 
   async function saveGastos(next) {
     setGastos(next);
-    try {
-      await window.storage.set("gastos-data", JSON.stringify(next));
-      flashSaved();
-    } catch (err) {}
+    if (await persist("gastos-data", JSON.stringify(next))) flashSaved();
   }
 
   async function saveRegistrosPeso(next) {
     setRegistrosPeso(next);
-    try {
-      await window.storage.set("peso-fotos-data", JSON.stringify(next));
-      flashSaved();
-    } catch (err) {}
+    if (await persist("peso-fotos-data", JSON.stringify(next))) flashSaved();
   }
 
   async function saveAgendaItems(next) {
     setAgendaItems(next);
-    try {
-      await window.storage.set("agenda-data", JSON.stringify(next));
-      flashSaved();
-    } catch (err) {}
+    if (await persist("agenda-data", JSON.stringify(next))) flashSaved();
     syncSchedule(profile && profile.nome, next, recorrentes);
   }
 
   async function saveRecorrentes(next) {
     setRecorrentes(next);
-    try {
-      await window.storage.set("recorrentes-data", JSON.stringify(next));
-      flashSaved();
-    } catch (err) {}
+    if (await persist("recorrentes-data", JSON.stringify(next))) flashSaved();
     syncSchedule(profile && profile.nome, agendaItems, next);
   }
 
@@ -521,9 +521,7 @@ export default function App() {
     const key = `${today}_${medId}`;
     const next = { ...recorrenteChecks, [key]: !recorrenteChecks[key] };
     setRecorrenteChecks(next);
-    try {
-      await window.storage.set("recorrentes-checks-data", JSON.stringify(next));
-    } catch (err) {}
+    await persist("recorrentes-checks-data", JSON.stringify(next));
   }
 
   function flashSaved() {
@@ -598,15 +596,22 @@ export default function App() {
 
   async function confirmImportBackup() {
     if (!pendingImport) return;
+    let hadFailure = false;
     for (const [key, value] of Object.entries(pendingImport.data)) {
       if (!BACKUP_KEYS.includes(key)) continue;
       try {
         await window.storage.set(key, value);
-      } catch (err) {}
+      } catch (err) {
+        hadFailure = true;
+      }
     }
     setPendingImport(null);
     if (backupFileInputRef.current) backupFileInputRef.current.value = "";
-    window.location.reload();
+    if (hadFailure) {
+      setImportError("O armazenamento ficou cheio durante a restauração — parte dos dados pode não ter sido salva. Remova fotos antigas e tente importar de novo.");
+    } else {
+      window.location.reload();
+    }
   }
 
   function cancelImportBackup() {
@@ -714,6 +719,7 @@ export default function App() {
                 const file = e.target.files[0];
                 if (!file) return;
                 setUploading(true);
+                checkStorageBeforeUpload();
                 try {
                   const dataUrl = await compressImage(file);
                   saveProfile({ ...(profile || {}), fotoPerfil: dataUrl });
@@ -755,6 +761,22 @@ export default function App() {
           </div>
         )}
 
+        {storageNotice && (
+          <div style={{
+            background: storageNotice.type === "error" ? "#FBE0DA" : "#FDF4E3",
+            border: `1px solid ${storageNotice.type === "error" ? TERRACOTTA : "#F0DBA6"}`,
+            borderRadius: 12, padding: "12px 14px", marginBottom: 16,
+            display: "flex", alignItems: "flex-start", gap: 10,
+          }}>
+            <div style={{ fontSize: 12, color: INK, lineHeight: 1.45, flex: 1 }}>{storageNotice.message}</div>
+            <button
+              onClick={() => setStorageNotice(null)}
+              style={{ border: "none", background: "none", color: GREY, fontSize: 16, cursor: "pointer", lineHeight: 1, padding: 0, flexShrink: 0 }}
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         {tab === "diario" && (
           <div>
@@ -953,6 +975,7 @@ export default function App() {
                     const file = e.target.files[0];
                     if (!file) return;
                     setUploading(true);
+                    checkStorageBeforeUpload();
                     try {
                       const dataUrl = await compressImage(file);
                       setNovoPeso((p) => ({ ...p, foto: dataUrl }));
@@ -1635,6 +1658,7 @@ export default function App() {
                     const file = e.target.files[0];
                     if (!file) return;
                     setUploading(true);
+                    checkStorageBeforeUpload();
                     try {
                       const dataUrl = await compressImage(file);
                       setNovoExame((p) => ({ ...p, foto: dataUrl }));
