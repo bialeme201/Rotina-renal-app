@@ -234,6 +234,7 @@ const BACKUP_KEYS = [
 
 export default function App() {
   const [tab, setTab] = useState("diario");
+  const [selectedDiaryDate, setSelectedDiaryDate] = useState(todayKey());
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState({});
   const [qol, setQol] = useState({});
@@ -264,6 +265,7 @@ export default function App() {
   const [showManual, setShowManual] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(null);
   const reportRef = useRef(null);
+  const diaryFormRef = useRef(null);
   const manualRef = useRef(null);
   const [openQolInfo, setOpenQolInfo] = useState(null);
   const [openArtigo, setOpenArtigo] = useState(null);
@@ -352,7 +354,8 @@ export default function App() {
   const hidratacaoOk = last7Dates.filter((d) => entries[d].agua === "Normal" || entries[d].agua === "Mais").length;
 
   const today = todayKey();
-  const todayEntry = entries[today] || { agua: "Normal", apetite: "Normal", humor: "Tranquilo", urina: "Normal", nota: "" };
+  const selectedEntry = entries[selectedDiaryDate] || { agua: "Normal", apetite: "Normal", humor: "Tranquilo", urina: "Normal", nota: "" };
+  const isEditingToday = selectedDiaryDate === today;
 
   const todayWeekday = new Date(today + "T12:00:00").getDay();
   const recorrentesHoje = recorrentes.filter((r) => {
@@ -632,8 +635,8 @@ export default function App() {
     } catch (err) {}
   }
 
-  function updateToday(field, value) {
-    const next = { ...entries, [today]: { ...todayEntry, [field]: value } };
+  function updateSelectedEntry(field, value) {
+    const next = { ...entries, [selectedDiaryDate]: { ...selectedEntry, [field]: value } };
     saveEntries(next);
   }
 
@@ -662,12 +665,12 @@ export default function App() {
     last3Dates.length === 3 &&
     (last3Dates.every((d) => entries[d].apetite === "Menos") || last3Dates.every((d) => entries[d].humor === "Quieto"));
 
-  const isNormalToday =
-    todayEntry.agua === "Normal" &&
-    todayEntry.apetite === "Normal" &&
-    todayEntry.humor === "Tranquilo" &&
-    todayEntry.urina === "Normal" &&
-    (todayEntry.corUrina || "Normal") === "Normal";
+  const isNormalSelected =
+    selectedEntry.agua === "Normal" &&
+    selectedEntry.apetite === "Normal" &&
+    selectedEntry.humor === "Tranquilo" &&
+    selectedEntry.urina === "Normal" &&
+    (selectedEntry.corUrina || "Normal") === "Normal";
 
   const daysSinceBackup = lastBackupDate
     ? Math.floor((new Date(today + "T12:00:00") - new Date(lastBackupDate + "T12:00:00")) / 86400000)
@@ -779,7 +782,33 @@ export default function App() {
         )}
 
         {tab === "diario" && (
-          <div>
+          <div ref={diaryFormRef}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 10.5, color: GREY, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em" }}>Editando o registro de</div>
+                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 16, color: INK }}>
+                  {isEditingToday ? "Hoje" : new Date(selectedDiaryDate + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {!isEditingToday && (
+                  <button
+                    onClick={() => setSelectedDiaryDate(today)}
+                    style={{ border: "none", background: "rgba(59,110,100,0.12)", color: TEAL, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 11.5, padding: "7px 12px", borderRadius: 9, cursor: "pointer" }}
+                  >
+                    Hoje
+                  </button>
+                )}
+                <input
+                  type="date"
+                  value={selectedDiaryDate}
+                  max={today}
+                  onChange={(e) => e.target.value && setSelectedDiaryDate(e.target.value)}
+                  style={{ padding: "7px 10px", borderRadius: 9, border: "1px solid rgba(42,42,42,0.12)", fontSize: 12.5, background: "#fff", color: INK }}
+                />
+              </div>
+            </div>
+
             {showDiarioIntro && (
               <div style={{ background: SAND, borderRadius: 16, padding: "14px 16px", marginBottom: 14 }}>
                 <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, color: INK, marginBottom: 6 }}>
@@ -830,34 +859,34 @@ export default function App() {
             )}
 
             <button
-              onClick={() => saveEntries({ ...entries, [today]: { agua: "Normal", apetite: "Normal", humor: "Tranquilo", urina: "Normal", corUrina: "Normal", soro: todayEntry.soro || "Não fiz", nota: todayEntry.nota } })}
+              onClick={() => saveEntries({ ...entries, [selectedDiaryDate]: { agua: "Normal", apetite: "Normal", humor: "Tranquilo", urina: "Normal", corUrina: "Normal", soro: selectedEntry.soro || "Não fiz", nota: selectedEntry.nota } })}
               style={{
                 width: "100%", display: "flex", alignItems: "center", gap: 12, textAlign: "left",
                 padding: "12px 16px", borderRadius: 16, border: "none", cursor: "pointer", marginBottom: 12,
-                background: isNormalToday ? "rgba(59,110,100,0.14)" : "rgba(42,42,42,0.04)",
+                background: isNormalSelected ? "rgba(59,110,100,0.14)" : "rgba(42,42,42,0.04)",
                 transition: "background 0.2s ease",
               }}
             >
               <div style={{
                 width: 26, height: 26, borderRadius: 8, flexShrink: 0,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                background: isNormalToday ? TEAL : "transparent",
-                border: isNormalToday ? "none" : "2px solid rgba(42,42,42,0.18)",
+                background: isNormalSelected ? TEAL : "transparent",
+                border: isNormalSelected ? "none" : "2px solid rgba(42,42,42,0.18)",
                 transition: "background 0.2s ease",
               }}>
-                {isNormalToday && <span style={{ color: "#fff", fontSize: 14, fontWeight: 800 }}>✓</span>}
+                {isNormalSelected && <span style={{ color: "#fff", fontSize: 14, fontWeight: 800 }}>✓</span>}
               </div>
-              <span style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, color: isNormalToday ? TEAL : GREY }}>
+              <span style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, color: isNormalSelected ? TEAL : GREY }}>
                 Marcar dia como normal
               </span>
             </button>
 
             <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 18, marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                <WaterBowl level={todayEntry.agua === "Menos" ? 0 : todayEntry.agua === "Mais" ? 2 : 1} />
+                <WaterBowl level={selectedEntry.agua === "Menos" ? 0 : selectedEntry.agua === "Mais" ? 2 : 1} />
                 <div>
-                  <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, color: TEAL }}>Água hoje</div>
-                  <div style={{ fontSize: 13, color: GREY }}>{todayEntry.agua === "Normal" ? "Bebendo normal" : todayEntry.agua === "Mais" ? "Bebendo mais que o normal" : "Bebendo menos — vale observar"}</div>
+                  <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, color: TEAL }}>{isEditingToday ? "Água hoje" : "Água nesse dia"}</div>
+                  <div style={{ fontSize: 13, color: GREY }}>{selectedEntry.agua === "Normal" ? "Bebendo normal" : selectedEntry.agua === "Mais" ? "Bebendo mais que o normal" : "Bebendo menos — vale observar"}</div>
                 </div>
               </div>
               {last7Dates.length > 0 && (
@@ -889,36 +918,36 @@ export default function App() {
 
             <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
               <IconLabel icon={Droplet}>Água</IconLabel>
-              <Segmented value={todayEntry.agua} onChange={(v) => updateToday("agua", v)} options={["Menos", "Normal", "Mais"]} />
+              <Segmented value={selectedEntry.agua} onChange={(v) => updateSelectedEntry("agua", v)} options={["Menos", "Normal", "Mais"]} />
 
               <div style={{ marginTop: 16 }}>
                 <IconLabel icon={UtensilsCrossed}>Apetite</IconLabel>
-                <Segmented value={todayEntry.apetite} onChange={(v) => updateToday("apetite", v)} options={["Menos", "Normal", "Mais"]} />
+                <Segmented value={selectedEntry.apetite} onChange={(v) => updateSelectedEntry("apetite", v)} options={["Menos", "Normal", "Mais"]} />
               </div>
 
               <div style={{ marginTop: 16 }}>
                 <IconLabel icon={Smile}>Humor</IconLabel>
-                <Segmented value={todayEntry.humor} onChange={(v) => updateToday("humor", v)} options={["Quieto", "Tranquilo", "Brincalhão"]} />
+                <Segmented value={selectedEntry.humor} onChange={(v) => updateSelectedEntry("humor", v)} options={["Quieto", "Tranquilo", "Brincalhão"]} />
               </div>
 
               <div style={{ marginTop: 16 }}>
                 <IconLabel icon={Waves}>Urina</IconLabel>
-                <Segmented value={todayEntry.urina} onChange={(v) => updateToday("urina", v)} options={["Menos", "Normal", "Mais"]} />
+                <Segmented value={selectedEntry.urina} onChange={(v) => updateSelectedEntry("urina", v)} options={["Menos", "Normal", "Mais"]} />
               </div>
 
               <div style={{ marginTop: 16 }}>
                 <IconLabel icon={Palette}>Cor da urina</IconLabel>
-                <Segmented value={todayEntry.corUrina || "Normal"} onChange={(v) => updateToday("corUrina", v)} options={["Normal", "Mais clara", "Mais escura", "Com sangue"]} />
+                <Segmented value={selectedEntry.corUrina || "Normal"} onChange={(v) => updateSelectedEntry("corUrina", v)} options={["Normal", "Mais clara", "Mais escura", "Com sangue"]} />
               </div>
-              {todayEntry.corUrina === "Com sangue" && (
+              {selectedEntry.corUrina === "Com sangue" && (
                 <div style={{ background: "#FBE0DA", border: `1px solid ${TERRACOTTA}`, borderRadius: 13, padding: "10px 12px", marginTop: 8, fontSize: 12, color: INK, fontWeight: 700 }}>
                   ⚑ Sangue na urina merece contato com o veterinário — não espere a próxima consulta agendada.
                 </div>
               )}
 
               <div style={{ marginTop: 16 }}>
-                <IconLabel icon={Syringe}>Fluidoterapia / soro hoje</IconLabel>
-                <Segmented value={todayEntry.soro || "Não fiz"} onChange={(v) => updateToday("soro", v)} options={["Não fiz", "Fiz"]} />
+                <IconLabel icon={Syringe}>Fluidoterapia / soro {isEditingToday ? "hoje" : "nesse dia"}</IconLabel>
+                <Segmented value={selectedEntry.soro || "Não fiz"} onChange={(v) => updateSelectedEntry("soro", v)} options={["Não fiz", "Fiz"]} />
               </div>
               <div style={{ fontSize: 10.5, color: GREY, marginTop: 6, fontStyle: "italic" }}>
                 Só um registro de que foi feito — quantidade e frequência seguem sempre a orientação do seu veterinário.
@@ -927,9 +956,9 @@ export default function App() {
 
               <label style={{ fontSize: 12.5, fontWeight: 700, color: TEAL, display: "block", margin: "14px 0 6px" }}>Observação</label>
               <textarea
-                value={todayEntry.nota}
-                onChange={(e) => updateToday("nota", e.target.value)}
-                placeholder="Algo que valha anotar hoje..."
+                value={selectedEntry.nota}
+                onChange={(e) => updateSelectedEntry("nota", e.target.value)}
+                placeholder={isEditingToday ? "Algo que valha anotar hoje..." : "Algo que valha anotar nesse dia..."}
                 style={{ width: "100%", minHeight: 60, borderRadius: 13, border: "1px solid rgba(42,42,42,0.08)", padding: 10, fontSize: 13, fontFamily: "inherit", resize: "vertical" }}
               />
             </div>
@@ -1019,16 +1048,31 @@ export default function App() {
 
             {sortedDates.length > 0 && (
               <>
-                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 8, color: INK }}>Histórico</div>
+                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 2, color: INK }}>Histórico</div>
+                <div style={{ fontSize: 10.5, color: GREY, marginBottom: 8 }}>Toque num dia pra abrir e editar o registro dele</div>
                 {sortedDates.slice(0, 10).map((date) => {
                   const e = entries[date];
+                  const isSelected = date === selectedDiaryDate;
                   return (
-                    <div key={date} style={{ background: "#fff", borderRadius: 14, padding: "10px 14px", marginBottom: 6, fontSize: 12.5, display: "flex", justifyContent: "space-between", border: "1px solid rgba(42,42,42,0.06)" }}>
-                      <span style={{ fontWeight: 700 }}>{new Date(date + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</span>
+                    <button
+                      key={date}
+                      onClick={() => {
+                        setSelectedDiaryDate(date);
+                        if (diaryFormRef.current) diaryFormRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                      style={{
+                        width: "100%", textAlign: "left", fontFamily: "inherit", cursor: "pointer",
+                        background: isSelected ? "rgba(59,110,100,0.10)" : "#fff",
+                        border: isSelected ? `1px solid ${TEAL}` : "1px solid rgba(42,42,42,0.06)",
+                        borderRadius: 14, padding: "10px 14px", marginBottom: 6, fontSize: 12.5,
+                        display: "flex", justifyContent: "space-between",
+                      }}
+                    >
+                      <span style={{ fontWeight: 700, color: isSelected ? TEAL : INK }}>{new Date(date + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</span>
                       <span style={{ color: e.corUrina === "Com sangue" ? TERRACOTTA : GREY, fontWeight: e.corUrina === "Com sangue" ? 700 : 400 }}>
                         água {e.agua.toLowerCase()} · apetite {e.apetite.toLowerCase()} · {e.humor.toLowerCase()}{e.soro === "Fiz" ? " · soro feito" : ""}{e.corUrina === "Com sangue" ? " · ⚑ sangue na urina" : ""}
                       </span>
-                    </div>
+                    </button>
                   );
                 })}
               </>
