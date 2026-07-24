@@ -236,6 +236,7 @@ const BACKUP_KEYS = [
 export default function App() {
   const [tab, setTab] = useState("diario");
   const [selectedDiaryDate, setSelectedDiaryDate] = useState(todayKey());
+  const [diaryHistoryLimit, setDiaryHistoryLimit] = useState(10);
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState({});
   const [qol, setQol] = useState({});
@@ -1114,8 +1115,8 @@ export default function App() {
             {sortedDates.length > 0 && (
               <>
                 <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 2, color: INK }}>Histórico</div>
-                <div style={{ fontSize: 10.5, color: GREY, marginBottom: 8 }}>Toque num dia pra abrir e editar o registro dele</div>
-                {sortedDates.slice(0, 10).map((date) => {
+                <div style={{ fontSize: 10.5, color: GREY, marginBottom: 8 }}>Toque em um dia para abrir e editar o registro.</div>
+                {sortedDates.slice(0, diaryHistoryLimit).map((date) => {
                   const e = entries[date];
                   const isSelected = date === selectedDiaryDate;
                   return (
@@ -1140,6 +1141,22 @@ export default function App() {
                     </button>
                   );
                 })}
+                {sortedDates.length > diaryHistoryLimit && (
+                  <button
+                    onClick={() => setDiaryHistoryLimit((n) => n + 10)}
+                    style={{ width: "100%", padding: 10, borderRadius: 14, border: "1px solid rgba(42,42,42,0.1)", background: "none", color: TEAL, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12, cursor: "pointer", marginTop: 2, marginBottom: 6 }}
+                  >
+                    Ver mais dias ({sortedDates.length - diaryHistoryLimit} restantes)
+                  </button>
+                )}
+                {diaryHistoryLimit > 10 && sortedDates.length <= diaryHistoryLimit && (
+                  <button
+                    onClick={() => setDiaryHistoryLimit(10)}
+                    style={{ width: "100%", padding: 8, borderRadius: 14, border: "none", background: "none", color: GREY, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 11.5, cursor: "pointer", marginBottom: 6 }}
+                  >
+                    Mostrar menos
+                  </button>
+                )}
               </>
             )}
 
@@ -1392,7 +1409,7 @@ export default function App() {
 
                 <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 20, marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
                   <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 2 }}>Histórico de gastos</div>
-                  <div style={{ fontSize: 10.5, color: GREY, marginBottom: 10 }}>Toque em um registro pra editar ou no 🗑 para apagar</div>
+                  <div style={{ fontSize: 10.5, color: GREY, marginBottom: 10 }}>Toque no ✏️ para editar ou no 🗑 para apagar</div>
                   {gastos.map((g, i) => (
                     <div
                       key={i}
@@ -1409,8 +1426,15 @@ export default function App() {
                           {g.frequencia && g.frequencia !== "Não se repete" ? ` · ${g.frequencia === "Semanal" ? `${g.vezesPorSemana}x/semana` : "mensal"}` : ""}
                         </div>
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ fontSize: 15, fontWeight: 800, color: INK, fontFamily: "'Poppins', sans-serif" }}>R$ {(Number(g.valor) || 0).toFixed(2)}</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); startEditGasto(i); }}
+                          style={{ border: "none", background: "none", color: TEAL, fontSize: 15, cursor: "pointer", padding: 4, lineHeight: 1 }}
+                          aria-label="Editar gasto"
+                        >
+                          ✏️
+                        </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); setDeleteGastoIndex(i); }}
                           style={{ border: "none", background: "none", color: GREY, fontSize: 15, cursor: "pointer", padding: 4, lineHeight: 1 }}
@@ -1857,7 +1881,7 @@ export default function App() {
             {exames.length > 0 && (
               <>
                 <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 2 }}>Histórico, agrupado por exame</div>
-                <div style={{ fontSize: 10.5, color: GREY, marginBottom: 10 }}>Toque em um registro pra editar ou no 🗑 para apagar</div>
+                <div style={{ fontSize: 10.5, color: GREY, marginBottom: 10 }}>Toque no ✏️ para editar ou no 🗑 para apagar</div>
                 {Object.values(examGroups).map((group, gi) => (
                   <div key={gi} style={{ background: "#fff", borderRadius: 12, padding: "16px 18px", marginBottom: 12, border: "1px solid rgba(42,42,42,0.06)" }}>
                     <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 16, color: TEAL, marginBottom: 10, textTransform: "capitalize" }}>
@@ -1875,8 +1899,15 @@ export default function App() {
                             {ex.data && new Date(ex.data + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
                             {ex.foto ? " 📎" : ""}
                           </span>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <span style={{ fontSize: 19, fontWeight: 800, color: INK, fontFamily: "'Poppins', sans-serif" }}>{ex.valor || "—"}</span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); startEditExame(exameIndex); }}
+                              style={{ border: "none", background: "none", color: TEAL, fontSize: 15, cursor: "pointer", padding: 4, lineHeight: 1 }}
+                              aria-label="Editar exame"
+                            >
+                              ✏️
+                            </button>
                             <button
                               onClick={(e) => { e.stopPropagation(); setDeleteExameIndex(exameIndex); }}
                               style={{ border: "none", background: "none", color: GREY, fontSize: 15, cursor: "pointer", padding: 4, lineHeight: 1 }}
