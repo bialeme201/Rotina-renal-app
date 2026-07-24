@@ -1769,7 +1769,7 @@ export default function App() {
             {exames.length > 0 && (
               <>
                 <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 2 }}>Histórico, agrupado por exame</div>
-                <div style={{ fontSize: 10.5, color: GREY, marginBottom: 10 }}>Toque num registro pra editar, ou no 🗑 pra apagar</div>
+                <div style={{ fontSize: 10.5, color: GREY, marginBottom: 10 }}>Toque em um registro pra editar ou no 🗑 para apagar</div>
                 {Object.values(examGroups).map((group, gi) => (
                   <div key={gi} style={{ background: "#fff", borderRadius: 12, padding: "16px 18px", marginBottom: 12, border: "1px solid rgba(42,42,42,0.06)" }}>
                     <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 16, color: TEAL, marginBottom: 10, textTransform: "capitalize" }}>
