@@ -247,6 +247,9 @@ export default function App() {
   const exameFormRef = useRef(null);
   const [gastos, setGastos] = useState([]);
   const [novoGasto, setNovoGasto] = useState({ data: todayKey(), categoria: "Ração", valor: "", frequencia: "Não se repete", vezesPorSemana: 1 });
+  const [editingGastoIndex, setEditingGastoIndex] = useState(null);
+  const [deleteGastoIndex, setDeleteGastoIndex] = useState(null);
+  const gastoFormRef = useRef(null);
   const [registrosPeso, setRegistrosPeso] = useState([]);
   const [novoPeso, setNovoPeso] = useState({ data: todayKey(), peso: "", foto: null });
   const [uploading, setUploading] = useState(false);
@@ -531,6 +534,34 @@ export default function App() {
   async function saveGastos(next) {
     setGastos(next);
     if (await persist("gastos-data", JSON.stringify(next))) flashSaved();
+  }
+
+  function startEditGasto(index) {
+    const g = gastos[index];
+    if (!g) return;
+    setEditingGastoIndex(index);
+    setNovoGasto({
+      data: g.data || todayKey(),
+      categoria: g.categoria || "Ração",
+      valor: g.valor || "",
+      frequencia: g.frequencia || "Não se repete",
+      vezesPorSemana: g.vezesPorSemana || 1,
+    });
+    if (gastoFormRef.current) gastoFormRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function cancelEditGasto() {
+    setEditingGastoIndex(null);
+    setNovoGasto({ data: todayKey(), categoria: "Ração", valor: "", frequencia: "Não se repete", vezesPorSemana: 1 });
+  }
+
+  function confirmDeleteGasto() {
+    if (deleteGastoIndex === null) return;
+    const next = gastos.filter((_, i) => i !== deleteGastoIndex);
+    saveGastos(next);
+    setEditingGastoIndex(null);
+    setNovoGasto({ data: todayKey(), categoria: "Ração", valor: "", frequencia: "Não se repete", vezesPorSemana: 1 });
+    setDeleteGastoIndex(null);
   }
 
   async function saveRegistrosPeso(next) {
@@ -1224,8 +1255,8 @@ export default function App() {
 
         {tab === "orcamento" && (
           <div>
-            <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
-              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Registrar gastos</div>
+            <div ref={gastoFormRef} style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
+              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{editingGastoIndex !== null ? "Editar gasto" : "Registrar gastos"}</div>
               <div style={{ fontSize: 11.5, color: GREY, marginBottom: 14 }}>Organize e controle suas despesas. Com base nessas informações o app poderá apresentar uma projeção de gastos para os próximos meses.</div>
 
               <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
@@ -1303,13 +1334,27 @@ export default function App() {
               <button
                 onClick={() => {
                   if (!novoGasto.data || !novoGasto.valor) return;
-                  saveGastos([{ ...novoGasto }, ...gastos]);
+                  if (editingGastoIndex !== null) {
+                    const next = gastos.map((g, i) => (i === editingGastoIndex ? { ...novoGasto } : g));
+                    saveGastos(next);
+                    setEditingGastoIndex(null);
+                  } else {
+                    saveGastos([{ ...novoGasto }, ...gastos]);
+                  }
                   setNovoGasto({ data: todayKey(), categoria: "Ração", valor: "", frequencia: "Não se repete", vezesPorSemana: 1 });
                 }}
                 style={{ width: "100%", padding: 10, borderRadius: 13, border: "none", background: TEAL, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}
               >
-                + Registrar
+                {editingGastoIndex !== null ? "Salvar alterações" : "+ Registrar"}
               </button>
+              {editingGastoIndex !== null && (
+                <button
+                  onClick={cancelEditGasto}
+                  style={{ width: "100%", padding: 9, borderRadius: 13, border: "none", background: "none", color: GREY, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12, cursor: "pointer", marginTop: 4 }}
+                >
+                  Cancelar edição
+                </button>
+              )}
             </div>
 
             {gastos.length > 0 && (
@@ -1343,6 +1388,39 @@ export default function App() {
                 <div style={{ background: INK, borderRadius: 22, padding: "16px 20px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ color: "#D8D8D8", fontSize: 12.5 }}>Total gasto registrado</span>
                   <span style={{ color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 20 }}>R$ {totalGastoGeral.toFixed(2)}</span>
+                </div>
+
+                <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 20, marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
+                  <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 2 }}>Histórico de gastos</div>
+                  <div style={{ fontSize: 10.5, color: GREY, marginBottom: 10 }}>Toque em um registro pra editar ou no 🗑 para apagar</div>
+                  {gastos.map((g, i) => (
+                    <div
+                      key={i}
+                      onClick={() => startEditGasto(i)}
+                      style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0",
+                        borderBottom: i < gastos.length - 1 ? "1px solid #F2EEE4" : "none", cursor: "pointer",
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>{g.categoria || "Outro"}</div>
+                        <div style={{ fontSize: 11, color: GREY }}>
+                          {g.data && new Date(g.data + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
+                          {g.frequencia && g.frequencia !== "Não se repete" ? ` · ${g.frequencia === "Semanal" ? `${g.vezesPorSemana}x/semana` : "mensal"}` : ""}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ fontSize: 15, fontWeight: 800, color: INK, fontFamily: "'Poppins', sans-serif" }}>R$ {(Number(g.valor) || 0).toFixed(2)}</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDeleteGastoIndex(i); }}
+                          style={{ border: "none", background: "none", color: GREY, fontSize: 15, cursor: "pointer", padding: 4, lineHeight: 1 }}
+                          aria-label="Apagar gasto"
+                        >
+                          🗑
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
                 {projecaoItens.length > 0 && (
@@ -2472,6 +2550,38 @@ export default function App() {
               </button>
               <button
                 onClick={confirmDeleteExame}
+                style={{ flex: 1, padding: 12, borderRadius: 14, border: "none", background: TERRACOTTA, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+              >
+                Apagar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteGastoIndex !== null && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(35,35,35,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 50 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 26, maxWidth: 360, width: "100%" }}>
+            <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 17, marginBottom: 12 }}>Apagar esse gasto?</div>
+            <div style={{ fontSize: 13, color: INK, lineHeight: 1.6, marginBottom: 18 }}>
+              {gastos[deleteGastoIndex] && (
+                <>
+                  <strong>{gastos[deleteGastoIndex].categoria || "Outro"}</strong>
+                  {gastos[deleteGastoIndex].valor ? ` — R$ ${Number(gastos[deleteGastoIndex].valor).toFixed(2)}` : ""}
+                  {gastos[deleteGastoIndex].data ? ` (${new Date(gastos[deleteGastoIndex].data + "T12:00:00").toLocaleDateString("pt-BR")})` : ""}
+                  {" "}vai ser apagado. Essa ação não pode ser desfeita.
+                </>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => setDeleteGastoIndex(null)}
+                style={{ flex: 1, padding: 12, borderRadius: 14, border: `1px solid ${GREY}`, background: "#fff", color: INK, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDeleteGasto}
                 style={{ flex: 1, padding: 12, borderRadius: 14, border: "none", background: TERRACOTTA, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
               >
                 Apagar
