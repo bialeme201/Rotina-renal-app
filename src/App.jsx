@@ -256,8 +256,12 @@ export default function App() {
   const [uploading, setUploading] = useState(false);
   const [agendaItems, setAgendaItems] = useState([]);
   const [novoAgendaItem, setNovoAgendaItem] = useState({ tipo: "", data: "", horario: "", obs: "" });
+  const [editingAgendaId, setEditingAgendaId] = useState(null);
+  const agendaFormRef = useRef(null);
   const [recorrentes, setRecorrentes] = useState([]);
   const [recorrenteChecks, setRecorrenteChecks] = useState({});
+  const [editingRecorrenteId, setEditingRecorrenteId] = useState(null);
+  const recorrenteFormRef = useRef(null);
   const [novoRecorrente, setNovoRecorrente] = useState({
     nome: "", horario: "", dias: [0, 1, 2, 3, 4, 5, 6],
     duracao: "continuo", dataInicio: todayKey(), dataFim: "",
@@ -580,6 +584,35 @@ export default function App() {
     setRecorrentes(next);
     if (await persist("recorrentes-data", JSON.stringify(next))) flashSaved();
     syncSchedule(profile && profile.nome, agendaItems, next);
+  }
+
+  function startEditAgendaItem(item) {
+    setEditingAgendaId(item.id);
+    setNovoAgendaItem({ tipo: item.tipo || "", data: item.data || "", horario: item.horario || "", obs: item.obs || "" });
+    if (agendaFormRef.current) agendaFormRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function cancelEditAgendaItem() {
+    setEditingAgendaId(null);
+    setNovoAgendaItem({ tipo: "", data: "", horario: "", obs: "" });
+  }
+
+  function startEditRecorrente(med) {
+    setEditingRecorrenteId(med.id);
+    setNovoRecorrente({
+      nome: med.nome || "",
+      horario: med.horario || "",
+      dias: med.dias || [0, 1, 2, 3, 4, 5, 6],
+      duracao: med.duracao || "continuo",
+      dataInicio: med.dataInicio || todayKey(),
+      dataFim: med.dataFim || "",
+    });
+    if (recorrenteFormRef.current) recorrenteFormRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function cancelEditRecorrente() {
+    setEditingRecorrenteId(null);
+    setNovoRecorrente({ nome: "", horario: "", dias: [0, 1, 2, 3, 4, 5, 6], duracao: "continuo", dataInicio: todayKey(), dataFim: "" });
   }
 
   async function toggleRecorrenteCheck(medId) {
@@ -1497,8 +1530,8 @@ export default function App() {
             )}
 
             <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 12, letterSpacing: "0.04em", textTransform: "uppercase", color: TERRACOTTA, marginBottom: 10 }}>Eventos únicos</div>
-            <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 16, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
-              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Novo compromisso</div>
+            <div ref={agendaFormRef} style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 16, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
+              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{editingAgendaId !== null ? "Editar compromisso" : "Novo compromisso"}</div>
               <div style={{ fontSize: 11.5, color: GREY, marginBottom: 14 }}>De acordo com a orientação do seu veterinário — o app só ajuda a lembrar.</div>
 
               <label style={{ fontSize: 12, color: GREY }}>Tipo</label>
@@ -1526,23 +1559,23 @@ export default function App() {
                 ))}
               </div>
 
-              <div style={{ display: "flex", gap: 8 }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 12, color: GREY }}>Próxima data</label>
+              <div style={{ display: "flex", gap: 16, marginBottom: 4 }}>
+                <div style={{ flex: 1.3 }}>
+                  <label style={{ fontSize: 12, color: GREY }}>Data</label>
                   <input
                     type="date"
                     value={novoAgendaItem.data}
                     onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, data: e.target.value })}
-                    style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 10px" }}
+                    style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 10px", background: "#fff" }}
                   />
                 </div>
-                <div style={{ width: 110 }}>
+                <div style={{ flex: 1 }}>
                   <label style={{ fontSize: 12, color: GREY }}>Horário</label>
                   <input
                     type="time"
                     value={novoAgendaItem.horario}
                     onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, horario: e.target.value })}
-                    style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 10px" }}
+                    style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 10px", background: "#fff" }}
                   />
                 </div>
               </div>
@@ -1558,13 +1591,26 @@ export default function App() {
               <button
                 onClick={() => {
                   if (!novoAgendaItem.data || !novoAgendaItem.tipo) return;
-                  saveAgendaItems([...agendaItems, { ...novoAgendaItem, id: Date.now() }]);
+                  if (editingAgendaId !== null) {
+                    saveAgendaItems(agendaItems.map((it) => (it.id === editingAgendaId ? { ...novoAgendaItem, id: editingAgendaId } : it)));
+                    setEditingAgendaId(null);
+                  } else {
+                    saveAgendaItems([...agendaItems, { ...novoAgendaItem, id: Date.now() }]);
+                  }
                   setNovoAgendaItem({ tipo: "", data: "", horario: "", obs: "" });
                 }}
                 style={{ width: "100%", padding: 11, borderRadius: 13, border: "none", background: TERRACOTTA, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
               >
-                Adicionar à agenda
+                {editingAgendaId !== null ? "Salvar alterações" : "Adicionar à agenda"}
               </button>
+              {editingAgendaId !== null && (
+                <button
+                  onClick={cancelEditAgendaItem}
+                  style={{ width: "100%", padding: 9, borderRadius: 13, border: "none", background: "none", color: GREY, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12, cursor: "pointer", marginTop: 4 }}
+                >
+                  Cancelar edição
+                </button>
+              )}
             </div>
 
             {sortedAgenda.length === 0 ? (
@@ -1597,6 +1643,12 @@ export default function App() {
                     }}>
                       {label}
                     </div>
+                    <button
+                      onClick={() => startEditAgendaItem(item)}
+                      style={{ border: "none", background: "none", color: TEAL, fontSize: 11.5, fontWeight: 700, cursor: "pointer", flexShrink: 0, padding: 0 }}
+                    >
+                      editar
+                    </button>
                     <button
                       onClick={() => saveAgendaItems(agendaItems.filter((it) => it.id !== item.id))}
                       style={{ border: "none", background: "none", color: GREY, fontSize: 16, cursor: "pointer", flexShrink: 0 }}
@@ -1637,8 +1689,8 @@ export default function App() {
               </div>
             )}
 
-            <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 14, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
-              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Novo remédio recorrente</div>
+            <div ref={recorrenteFormRef} style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 14, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
+              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{editingRecorrenteId !== null ? "Editar remédio" : "Novo remédio"}</div>
               <div style={{ fontSize: 11.5, color: GREY, marginBottom: 14 }}>Datas e frequência conforme a orientação do seu veterinário.</div>
 
               <label style={{ fontSize: 12, color: GREY }}>Nome</label>
@@ -1725,16 +1777,30 @@ export default function App() {
               <button
                 onClick={() => {
                   if (!novoRecorrente.nome || novoRecorrente.dias.length === 0) return;
-                  track("add_recurring_med");
-                  saveRecorrentes([...recorrentes, { ...novoRecorrente, id: Date.now() }]);
-                  setMedSavedMsg(`✓ ${novoRecorrente.nome} incluído na agenda`);
+                  if (editingRecorrenteId !== null) {
+                    saveRecorrentes(recorrentes.map((m) => (m.id === editingRecorrenteId ? { ...novoRecorrente, id: editingRecorrenteId } : m)));
+                    setEditingRecorrenteId(null);
+                    setMedSavedMsg(`✓ ${novoRecorrente.nome} atualizado`);
+                  } else {
+                    track("add_recurring_med");
+                    saveRecorrentes([...recorrentes, { ...novoRecorrente, id: Date.now() }]);
+                    setMedSavedMsg(`✓ ${novoRecorrente.nome} incluído na agenda`);
+                  }
                   setTimeout(() => setMedSavedMsg(""), 2800);
                   setNovoRecorrente({ nome: "", horario: "", dias: [0, 1, 2, 3, 4, 5, 6], duracao: "continuo", dataInicio: todayKey(), dataFim: "" });
                 }}
                 style={{ width: "100%", padding: 11, borderRadius: 13, border: "none", background: TEAL, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 14 }}
               >
-                Salvar remédio
+                {editingRecorrenteId !== null ? "Salvar alterações" : "Salvar remédio"}
               </button>
+              {editingRecorrenteId !== null && (
+                <button
+                  onClick={cancelEditRecorrente}
+                  style={{ width: "100%", padding: 9, borderRadius: 13, border: "none", background: "none", color: GREY, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12, cursor: "pointer", marginTop: 4 }}
+                >
+                  Cancelar edição
+                </button>
+              )}
 
               {medSavedMsg && (
                 <div style={{
@@ -1789,12 +1855,20 @@ export default function App() {
                         {med.horario} · {med.duracao === "continuo" ? "contínuo" : `até ${med.dataFim ? new Date(med.dataFim + "T12:00:00").toLocaleDateString("pt-BR") : "—"}`}
                       </div>
                     </div>
-                    <button
-                      onClick={() => saveRecorrentes(recorrentes.filter((m) => m.id !== med.id))}
-                      style={{ border: "none", background: "none", color: GREY, fontSize: 16, cursor: "pointer" }}
-                    >
-                      ×
-                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <button
+                        onClick={() => startEditRecorrente(med)}
+                        style={{ border: "none", background: "none", color: TEAL, fontSize: 11.5, fontWeight: 700, cursor: "pointer", padding: 0 }}
+                      >
+                        editar
+                      </button>
+                      <button
+                        onClick={() => saveRecorrentes(recorrentes.filter((m) => m.id !== med.id))}
+                        style={{ border: "none", background: "none", color: GREY, fontSize: 16, cursor: "pointer" }}
+                      >
+                        ×
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
