@@ -255,7 +255,7 @@ export default function App() {
   const [novoPeso, setNovoPeso] = useState({ data: todayKey(), peso: "", foto: null });
   const [uploading, setUploading] = useState(false);
   const [agendaItems, setAgendaItems] = useState([]);
-  const [novoAgendaItem, setNovoAgendaItem] = useState({ tipo: "", data: "", obs: "" });
+  const [novoAgendaItem, setNovoAgendaItem] = useState({ tipo: "", data: "", horario: "", obs: "" });
   const [recorrentes, setRecorrentes] = useState([]);
   const [recorrenteChecks, setRecorrenteChecks] = useState({});
   const [novoRecorrente, setNovoRecorrente] = useState({
@@ -1526,13 +1526,26 @@ export default function App() {
                 ))}
               </div>
 
-              <label style={{ fontSize: 12, color: GREY }}>Próxima data</label>
-              <input
-                type="date"
-                value={novoAgendaItem.data}
-                onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, data: e.target.value })}
-                style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 10px" }}
-              />
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 12, color: GREY }}>Próxima data</label>
+                  <input
+                    type="date"
+                    value={novoAgendaItem.data}
+                    onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, data: e.target.value })}
+                    style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 10px" }}
+                  />
+                </div>
+                <div style={{ width: 110 }}>
+                  <label style={{ fontSize: 12, color: GREY }}>Horário</label>
+                  <input
+                    type="time"
+                    value={novoAgendaItem.horario}
+                    onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, horario: e.target.value })}
+                    style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 10px" }}
+                  />
+                </div>
+              </div>
 
               <label style={{ fontSize: 12, color: GREY }}>Observações</label>
               <textarea
@@ -1546,7 +1559,7 @@ export default function App() {
                 onClick={() => {
                   if (!novoAgendaItem.data || !novoAgendaItem.tipo) return;
                   saveAgendaItems([...agendaItems, { ...novoAgendaItem, id: Date.now() }]);
-                  setNovoAgendaItem({ tipo: "", data: "", obs: "" });
+                  setNovoAgendaItem({ tipo: "", data: "", horario: "", obs: "" });
                 }}
                 style={{ width: "100%", padding: 11, borderRadius: 13, border: "none", background: TERRACOTTA, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
               >
@@ -1573,6 +1586,7 @@ export default function App() {
                       <div style={{ fontWeight: 700, fontSize: 13, color: INK }}>{item.tipo}</div>
                       <div style={{ fontSize: 11.5, color: GREY }}>
                         {new Date(item.data + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
+                        {item.horario ? ` · ${item.horario}` : ""}
                       </div>
                       {item.obs && <div style={{ fontSize: 11, color: GREY, fontStyle: "italic", marginTop: 2 }}>{item.obs}</div>}
                     </div>
