@@ -1559,26 +1559,21 @@ export default function App() {
                 ))}
               </div>
 
-              <div style={{ display: "flex", gap: 16, marginBottom: 4 }}>
-                <div style={{ flex: 1.3 }}>
-                  <label style={{ fontSize: 12, color: GREY }}>Data</label>
-                  <input
-                    type="date"
-                    value={novoAgendaItem.data}
-                    onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, data: e.target.value })}
-                    style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 10px", background: "#fff" }}
-                  />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 12, color: GREY }}>Horário</label>
-                  <input
-                    type="time"
-                    value={novoAgendaItem.horario}
-                    onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, horario: e.target.value })}
-                    style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 10px", background: "#fff" }}
-                  />
-                </div>
-              </div>
+              <label style={{ fontSize: 12, color: GREY }}>Data</label>
+              <input
+                type="date"
+                value={novoAgendaItem.data}
+                onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, data: e.target.value })}
+                style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 10px", background: "#fff" }}
+              />
+
+              <label style={{ fontSize: 12, color: GREY }}>Horário</label>
+              <input
+                type="time"
+                value={novoAgendaItem.horario}
+                onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, horario: e.target.value })}
+                style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 10px", background: "#fff" }}
+              />
 
               <label style={{ fontSize: 12, color: GREY }}>Observações</label>
               <textarea
