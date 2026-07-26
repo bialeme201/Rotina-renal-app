@@ -82,14 +82,29 @@ export default async function handler(req, res) {
 
     for (const item of agendaItems) {
       if (item.data !== today) continue;
-      if (nowMinutes < AGENDA_WINDOW_START_MINUTES) continue;
 
-      toSend.push({
-        deviceId: row.device_id,
-        key: `agenda_${item.id}_${today}`,
-        title: `Compromisso hoje: ${item.tipo}`,
-        body: `${nome} tem "${item.tipo}" hoje.${item.obs ? " " + item.obs : ""}`,
-      });
+      if (nowMinutes >= AGENDA_WINDOW_START_MINUTES) {
+        toSend.push({
+          deviceId: row.device_id,
+          key: `agenda_${item.id}_${today}`,
+          title: `Compromisso hoje: ${item.tipo}`,
+          body: `${nome} tem "${item.tipo}" hoje.${item.obs ? " " + item.obs : ""}`,
+        });
+      }
+
+      const itemMinutes = parseHorario(item.horario);
+      if (itemMinutes !== null) {
+        const oneHourBefore = itemMinutes - 60;
+        const diff = nowMinutes - oneHourBefore;
+        if (oneHourBefore >= 0 && diff >= 0 && diff <= TOLERANCE_MINUTES) {
+          toSend.push({
+            deviceId: row.device_id,
+            key: `agenda_1h_${item.id}_${today}`,
+            title: `Daqui a 1h: ${item.tipo}`,
+            body: `${nome} tem "${item.tipo}" às ${item.horario}.${item.obs ? " " + item.obs : ""}`,
+          });
+        }
+      }
     }
   }
 
