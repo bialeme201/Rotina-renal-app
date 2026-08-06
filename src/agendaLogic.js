@@ -186,10 +186,14 @@ export function lembretesLabel(lembretes) {
   const l = normalizeLembretes(lembretes);
   const hora = `${formatDuration(l.minutosAntes)} antes`;
   if (l.diasAntes.length === 0) return hora;
-  const dias = l.diasAntes
-    .map((d) => (d === 1 ? "1 dia" : d === 7 ? "1 semana" : `${d} dias`))
-    .join(" e ");
-  return `${dias} antes, ${hora}`;
+  if (l.diasAntes.length === 1) {
+    const d = l.diasAntes[0];
+    const unico = d === 1 ? "1 dia" : d === 7 ? "1 semana" : `${d} dias`;
+    return `${unico} antes, ${hora}`;
+  }
+  const ultimo = l.diasAntes[l.diasAntes.length - 1];
+  const dias = `${l.diasAntes.slice(0, -1).join(", ")} e ${ultimo}`;
+  return `${dias} dias antes, ${hora}`;
 }
 
 export function agendaStatus(item, todayKey) {

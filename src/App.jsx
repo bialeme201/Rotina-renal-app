@@ -3,7 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import {
   NotebookPen, FlaskConical, HeartPulse, Wallet, BookOpen,
   Droplet, UtensilsCrossed, Smile, Waves, Syringe, Palette, Cat,
-  ExternalLink, Info, Stethoscope, Calendar, Plus, X, Bell,
+  ExternalLink, Info, Stethoscope, Calendar, Plus, X, Bell, ChevronRight,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
@@ -16,7 +16,8 @@ import {
   dateKeyFromDate, addDays, addMonths, startOfWeek, monthKeyOf, medOccursOn, medStatus,
   medHorarios, medFrequencia, medFrequenciaLabel, medCheckKey, agendaStatus, agendaTitulo,
   agendaExames, jejumInfo, daysUntilLabel as agendaDaysUntilLabel, normalizeLembretes,
-  lembretesLabel, formatDuration, DEFAULT_LEMBRETES, DIAS_ANTES_OPCOES, MINUTOS_ANTES_OPCOES,
+  lembretesLabel, formatDuration, WEEKDAY_SHORT,
+  DEFAULT_LEMBRETES, DIAS_ANTES_OPCOES, MINUTOS_ANTES_OPCOES,
   JEJUM_HORAS_OPCOES, JEJUM_MINUTOS_MED_OPCOES,
 } from "./agendaLogic.js";
 
@@ -41,6 +42,31 @@ const HORARIOS_SUGERIDOS = ["07:00", "08:00", "12:00", "18:00", "20:00", "22:00"
 
 const FREQ_LABEL = { "24h": "24h", "48h": "48h", dias: "Dias fixos" };
 const FREQ_VALUE = { "24h": "24h", "48h": "48h", "Dias fixos": "dias" };
+
+// Resumos mostrados na linha "Detalhes" — o que está guardado na segunda
+// etapa continua visível na primeira, em uma linha.
+function resumoCompromisso(item) {
+  const partes = [item.horario || "sem horário"];
+  if (item.exames.length) partes.push(`${item.exames.length} exame${item.exames.length > 1 ? "s" : ""}`);
+  if (item.jejum) partes.push(`jejum de ${item.jejumHoras}h`);
+  partes.push(`avisa ${lembretesLabel(item.lembretes)}`);
+  return partes.join(" · ");
+}
+
+function resumoRemedio(med) {
+  const horarios = med.horarios.filter(Boolean);
+  const partes = [horarios.length ? horarios.join(" · ") : "sem horário"];
+  if (med.frequencia === "dias") {
+    partes.push(med.dias.length === 7
+      ? "todos os dias"
+      : med.dias.slice().sort().map((d) => WEEKDAY_SHORT[d]).join(", ") || "nenhum dia");
+  }
+  if (med.jejum) partes.push(`jejum de ${formatDuration(med.jejumMinutos)}`);
+  if (med.duracao === "determinado" && med.dataFim) {
+    partes.push(`até ${new Date(med.dataFim + "T12:00:00").toLocaleDateString("pt-BR")}`);
+  }
+  return partes.join(" · ");
+}
 
 function compressImage(file, maxWidth = 360, quality = 0.6) {
   return new Promise((resolve, reject) => {
@@ -198,12 +224,12 @@ function LembretesPicker({ value, onChange }) {
 }
 
 // Folha modal que sobe de baixo — mantém o cadastro fora do caminho até
-// alguém pedir por ele.
-function Sheet({ title, subtitle, onClose, children }) {
+// alguém pedir por ele. O zIndex permite empilhar a folha de detalhes.
+function Sheet({ title, subtitle, onClose, children, zIndex = 60 }) {
   return (
     <div
       onClick={onClose}
-      style={{ position: "fixed", inset: 0, background: "rgba(35,35,35,0.5)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
+      style={{ position: "fixed", inset: 0, background: "rgba(35,35,35,0.5)", zIndex, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -229,6 +255,27 @@ function Sheet({ title, subtitle, onClose, children }) {
         {children}
       </div>
     </div>
+  );
+}
+
+// Linha que abre a folha de detalhes, resumindo o que já está configurado
+// para nada ficar escondido atrás dela.
+function DetalhesRow({ resumo, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+        background: "#fff", border: "1px solid rgba(42,42,42,0.08)", borderRadius: 16,
+        padding: "14px 16px", cursor: "pointer", textAlign: "left", marginBottom: 14,
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, color: INK }}>Detalhes</div>
+        <div style={{ fontSize: 11, color: GREY, marginTop: 2 }}>{resumo}</div>
+      </div>
+      <ChevronRight size={18} color={GREY} style={{ flexShrink: 0 }} />
+    </button>
   );
 }
 
@@ -376,7 +423,8 @@ export default function App() {
   const [selectedDay, setSelectedDay] = useState(todayKey());
   const [calendarMonth, setCalendarMonth] = useState(monthKeyOf(todayKey()));
   const [weekStart, setWeekStart] = useState(startOfWeek(todayKey()));
-  const [sheet, setSheet] = useState(null); // null | "menu" | "compromisso" | "remedio"
+  const [sheet, setSheet] = useState(null); // null | "menu" | "compromisso" | "remedio" | "notif"
+  const [detalhesAbertos, setDetalhesAbertos] = useState(false);
   const [notifPrefs, setNotifPrefs] = useState(DEFAULT_LEMBRETES);
   const [novoExameNome, setNovoExameNome] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
@@ -747,6 +795,7 @@ export default function App() {
     setEditingAgendaId(null);
     setNovoAgendaItem(EMPTY_AGENDA_ITEM);
     setNovoExameNome("");
+    setDetalhesAbertos(false);
     setSheet(null);
   }
 
@@ -775,6 +824,7 @@ export default function App() {
   function cancelEditRecorrente() {
     setEditingRecorrenteId(null);
     setNovoRecorrente(EMPTY_RECORRENTE);
+    setDetalhesAbertos(false);
     setSheet(null);
   }
 
@@ -2317,22 +2367,69 @@ export default function App() {
           onClose={cancelEditAgendaItem}
         >
           <div style={{ background: "#fff", borderRadius: 16, padding: 18, marginBottom: 12 }}>
-            <label style={{ fontSize: 12, color: GREY }}>Tipo</label>
+            <label style={{ fontSize: 12, color: GREY }}>O que é?</label>
             <input
               value={novoAgendaItem.tipo}
               onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, tipo: e.target.value })}
-              placeholder="Ex: Consulta de retorno, Coleta de exames..."
+              placeholder="Ex: Consulta de retorno"
               style={{ width: "100%", padding: 9, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 8px", background: "#fff", boxSizing: "border-box" }}
             />
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
-              {["Consulta", "Coleta de exames", "Ultrassom", "Fluidoterapia", "Limpeza do dispositivo", "Outro"].map((tipo) => (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+              {["Consulta", "Coleta de exames", "Ultrassom", "Fluidoterapia"].map((tipo) => (
                 <ChipToggle key={tipo} active={novoAgendaItem.tipo === tipo} onClick={() => setNovoAgendaItem({ ...novoAgendaItem, tipo })}>
                   {tipo}
                 </ChipToggle>
               ))}
             </div>
 
-            <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>Exames desse dia</label>
+            <label style={{ fontSize: 12, color: GREY }}>Data</label>
+            <input
+              type="date"
+              value={novoAgendaItem.data}
+              onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, data: e.target.value })}
+              style={{ width: "100%", padding: 9, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, marginTop: 4, background: "#fff", boxSizing: "border-box" }}
+            />
+          </div>
+
+          <DetalhesRow resumo={resumoCompromisso(novoAgendaItem)} onClick={() => setDetalhesAbertos(true)} />
+
+          <button
+            onClick={saveCompromissoFromForm}
+            style={{ width: "100%", padding: 13, borderRadius: 14, border: "none", background: TERRACOTTA, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}
+          >
+            {editingAgendaId !== null ? "Salvar alterações" : "Adicionar à agenda"}
+          </button>
+          {editingAgendaId !== null && (
+            <button
+              onClick={() => {
+                saveAgendaItems(agendaItems.filter((it) => it.id !== editingAgendaId));
+                cancelEditAgendaItem();
+              }}
+              style={{ width: "100%", padding: 11, borderRadius: 14, border: "none", background: "none", color: GREY, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, cursor: "pointer", marginTop: 4 }}
+            >
+              Apagar compromisso
+            </button>
+          )}
+        </Sheet>
+      )}
+
+      {sheet === "compromisso" && detalhesAbertos && (
+        <Sheet
+          title="Detalhes do compromisso"
+          subtitle={novoAgendaItem.tipo || "Compromisso sem nome ainda"}
+          onClose={() => setDetalhesAbertos(false)}
+          zIndex={70}
+        >
+          <div style={{ background: "#fff", borderRadius: 16, padding: 18, marginBottom: 12 }}>
+            <label style={{ fontSize: 12, color: GREY }}>Horário</label>
+            <input
+              type="time"
+              value={novoAgendaItem.horario}
+              onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, horario: e.target.value })}
+              style={{ width: "100%", padding: 9, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 16px", background: "#fff", boxSizing: "border-box" }}
+            />
+
+            <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 4 }}>Exames desse dia</label>
             <div style={{ fontSize: 10.5, color: GREY, marginBottom: 8 }}>
               Dá para marcar quantos precisar para a mesma data — é comum sair mais de um na mesma coleta.
             </div>
@@ -2364,7 +2461,7 @@ export default function App() {
                   </ChipToggle>
                 ))}
             </div>
-            <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+            <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
               <input
                 value={novoExameNome}
                 onChange={(e) => setNovoExameNome(e.target.value)}
@@ -2387,27 +2484,6 @@ export default function App() {
               >
                 Incluir
               </button>
-            </div>
-
-            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <label style={{ fontSize: 12, color: GREY }}>Data</label>
-                <input
-                  type="date"
-                  value={novoAgendaItem.data}
-                  onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, data: e.target.value })}
-                  style={{ width: "100%", padding: 9, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, marginTop: 4, background: "#fff", boxSizing: "border-box" }}
-                />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <label style={{ fontSize: 12, color: GREY }}>Horário</label>
-                <input
-                  type="time"
-                  value={novoAgendaItem.horario}
-                  onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, horario: e.target.value })}
-                  style={{ width: "100%", padding: 9, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, marginTop: 4, background: "#fff", boxSizing: "border-box" }}
-                />
-              </div>
             </div>
 
             <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>Precisa de jejum?</label>
@@ -2454,22 +2530,11 @@ export default function App() {
           </div>
 
           <button
-            onClick={saveCompromissoFromForm}
-            style={{ width: "100%", padding: 13, borderRadius: 14, border: "none", background: TERRACOTTA, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}
+            onClick={() => setDetalhesAbertos(false)}
+            style={{ width: "100%", padding: 13, borderRadius: 14, border: "none", background: TEAL, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}
           >
-            {editingAgendaId !== null ? "Salvar alterações" : "Adicionar à agenda"}
+            Pronto
           </button>
-          {editingAgendaId !== null && (
-            <button
-              onClick={() => {
-                saveAgendaItems(agendaItems.filter((it) => it.id !== editingAgendaId));
-                cancelEditAgendaItem();
-              }}
-              style={{ width: "100%", padding: 11, borderRadius: 14, border: "none", background: "none", color: GREY, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, cursor: "pointer", marginTop: 4 }}
-            >
-              Apagar compromisso
-            </button>
-          )}
         </Sheet>
       )}
 
@@ -2479,13 +2544,13 @@ export default function App() {
           subtitle="Datas e frequência conforme a orientação do seu veterinário."
           onClose={cancelEditRecorrente}
         >
-          <div style={{ background: "#fff", borderRadius: 16, padding: 18, marginBottom: 14 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 18, marginBottom: 12 }}>
             <label style={{ fontSize: 12, color: GREY }}>Nome</label>
             <input
               value={novoRecorrente.nome}
               onChange={(e) => setNovoRecorrente({ ...novoRecorrente, nome: e.target.value })}
               placeholder="Ex: Antibiótico"
-              style={{ width: "100%", padding: 9, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 14px", boxSizing: "border-box" }}
+              style={{ width: "100%", padding: 9, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 16px", boxSizing: "border-box" }}
             />
 
             <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>De quanto em quanto tempo?</label>
@@ -2494,12 +2559,43 @@ export default function App() {
               onChange={(v) => setNovoRecorrente({ ...novoRecorrente, frequencia: FREQ_VALUE[v] })}
               options={["24h", "48h", "Dias fixos"]}
             />
-            <div style={{ fontSize: 10.5, color: GREY, margin: "8px 0 14px" }}>
+            <div style={{ fontSize: 10.5, color: GREY, marginTop: 8 }}>
               {novoRecorrente.frequencia === "24h" && "Todo dia, no mesmo horário."}
-              {novoRecorrente.frequencia === "48h" && "Dia sim, dia não, contando a partir da data de início."}
-              {novoRecorrente.frequencia === "dias" && "Você escolhe os dias da semana."}
+              {novoRecorrente.frequencia === "48h" && "Dia sim, dia não, contando a partir da primeira dose."}
+              {novoRecorrente.frequencia === "dias" && "Você escolhe os dias da semana nos detalhes."}
             </div>
+          </div>
 
+          <DetalhesRow resumo={resumoRemedio(novoRecorrente)} onClick={() => setDetalhesAbertos(true)} />
+
+          <button
+            onClick={saveRemedioFromForm}
+            style={{ width: "100%", padding: 13, borderRadius: 14, border: "none", background: TEAL, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}
+          >
+            {editingRecorrenteId !== null ? "Salvar alterações" : "Salvar remédio"}
+          </button>
+          {editingRecorrenteId !== null && (
+            <button
+              onClick={() => {
+                saveRecorrentes(recorrentes.filter((m) => m.id !== editingRecorrenteId));
+                cancelEditRecorrente();
+              }}
+              style={{ width: "100%", padding: 11, borderRadius: 14, border: "none", background: "none", color: GREY, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, cursor: "pointer", marginTop: 4 }}
+            >
+              Apagar remédio
+            </button>
+          )}
+        </Sheet>
+      )}
+
+      {sheet === "remedio" && detalhesAbertos && (
+        <Sheet
+          title="Detalhes do remédio"
+          subtitle={novoRecorrente.nome || "Remédio sem nome ainda"}
+          onClose={() => setDetalhesAbertos(false)}
+          zIndex={70}
+        >
+          <div style={{ background: "#fff", borderRadius: 16, padding: 18, marginBottom: 14 }}>
             <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>
               {novoRecorrente.horarios.length > 1 ? "Horários" : "Horário"}
             </label>
@@ -2526,7 +2622,7 @@ export default function App() {
                 )}
               </div>
             ))}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "8px 0 8px" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "8px 0" }}>
               {HORARIOS_SUGERIDOS.filter((h) => !novoRecorrente.horarios.includes(h)).map((h) => (
                 <ChipToggle
                   key={h}
@@ -2546,7 +2642,7 @@ export default function App() {
             </div>
             <button
               onClick={() => setNovoRecorrente({ ...novoRecorrente, horarios: [...novoRecorrente.horarios, ""] })}
-              style={{ border: "none", background: "none", color: TEAL, fontSize: 11.5, fontWeight: 700, cursor: "pointer", padding: 0, marginBottom: 14, textDecoration: "underline" }}
+              style={{ border: "none", background: "none", color: TEAL, fontSize: 11.5, fontWeight: 700, cursor: "pointer", padding: 0, marginBottom: 16, textDecoration: "underline" }}
             >
               + outro horário no mesmo dia
             </button>
@@ -2580,7 +2676,7 @@ export default function App() {
                     const allSelected = novoRecorrente.dias.length === 7;
                     setNovoRecorrente({ ...novoRecorrente, dias: allSelected ? [] : [0, 1, 2, 3, 4, 5, 6] });
                   }}
-                  style={{ border: "none", background: "none", color: TEAL, fontSize: 11.5, fontWeight: 700, cursor: "pointer", padding: 0, marginBottom: 14, textDecoration: "underline" }}
+                  style={{ border: "none", background: "none", color: TEAL, fontSize: 11.5, fontWeight: 700, cursor: "pointer", padding: 0, marginBottom: 16, textDecoration: "underline" }}
                 >
                   {novoRecorrente.dias.length === 7 ? "Desmarcar todos" : "Marcar todos os dias"}
                 </button>
@@ -2640,22 +2736,11 @@ export default function App() {
           </div>
 
           <button
-            onClick={saveRemedioFromForm}
+            onClick={() => setDetalhesAbertos(false)}
             style={{ width: "100%", padding: 13, borderRadius: 14, border: "none", background: TEAL, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}
           >
-            {editingRecorrenteId !== null ? "Salvar alterações" : "Salvar remédio"}
+            Pronto
           </button>
-          {editingRecorrenteId !== null && (
-            <button
-              onClick={() => {
-                saveRecorrentes(recorrentes.filter((m) => m.id !== editingRecorrenteId));
-                cancelEditRecorrente();
-              }}
-              style={{ width: "100%", padding: 11, borderRadius: 14, border: "none", background: "none", color: GREY, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, cursor: "pointer", marginTop: 4 }}
-            >
-              Apagar remédio
-            </button>
-          )}
         </Sheet>
       )}
       {showOnboarding && onboardingStep === 0 && (
