@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { BarChart, Bar, LineChart, Line, ReferenceLine, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import {
-  NotebookPen, FlaskConical, HeartPulse, Wallet, BookOpen,
+  HeartPulse, BookOpen, FolderOpen,
   Droplet, UtensilsCrossed, Smile, Waves, Syringe, Palette, Cat,
   ExternalLink, Info, Stethoscope, Calendar, Plus, X, Bell, ChevronRight,
 } from "lucide-react";
@@ -279,6 +279,66 @@ function DetalhesRow({ resumo, onClick }) {
   );
 }
 
+// Como cada resposta do diário se posiciona em relação ao normal. Só descreve
+// o que foi registrado — a leitura clínica segue com o veterinário.
+const SINAIS = [
+  { campo: "agua", rotulo: "Água", neutro: "Normal", abaixo: "Menos" },
+  { campo: "apetite", rotulo: "Apetite", neutro: "Normal", abaixo: "Menos" },
+  { campo: "humor", rotulo: "Humor", neutro: "Tranquilo", abaixo: "Quieto" },
+  { campo: "urina", rotulo: "Urina", neutro: "Normal", abaixo: "Menos" },
+];
+
+const SINAL_CORES = {
+  neutro: { bg: "rgba(59,110,100,0.18)", label: "como o normal" },
+  acima: { bg: "rgba(59,110,100,0.40)", label: "mais que o normal" },
+  abaixo: { bg: "rgba(196,98,45,0.42)", label: "menos que o normal" },
+  vazio: { bg: "rgba(42,42,42,0.05)", label: "sem registro" },
+};
+
+function sinalEstado(entry, sinal) {
+  if (!entry) return "vazio";
+  const v = entry[sinal.campo];
+  if (!v) return "vazio";
+  if (v === sinal.neutro) return "neutro";
+  if (v === sinal.abaixo) return "abaixo";
+  return "acima";
+}
+
+// Faixa dos últimos dias: cada linha é uma pergunta do diário, cada coluna um
+// dia. É a leitura que nenhuma das duas abas antigas dava sozinha.
+function SinaisTimeline({ dias, entries }) {
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <div style={{ minWidth: dias.length * 14 + 70 }}>
+        {SINAIS.map((sinal) => (
+          <div key={sinal.campo} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
+            <div style={{ width: 62, flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: INK }}>{sinal.rotulo}</div>
+            <div style={{ display: "flex", gap: 2, flex: 1 }}>
+              {dias.map((d) => {
+                const estado = sinalEstado(entries[d], sinal);
+                return (
+                  <div
+                    key={d}
+                    title={`${new Date(d + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} — ${sinal.rotulo}: ${entries[d] && entries[d][sinal.campo] ? entries[d][sinal.campo] : "sem registro"}`}
+                    style={{ flex: 1, minWidth: 12, height: 17, borderRadius: 4, background: SINAL_CORES[estado].bg }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+          <div style={{ width: 62, flexShrink: 0 }} />
+          <div style={{ display: "flex", justifyContent: "space-between", flex: 1, fontSize: 9, color: GREY }}>
+            <span>{new Date(dias[0] + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</span>
+            <span>hoje</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function IconLabel({ icon: Icon, children }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
@@ -391,7 +451,9 @@ const BACKUP_KEYS = [
 ];
 
 export default function App() {
-  const [tab, setTab] = useState("diario");
+  const [tab, setTab] = useState("checkin");
+  const [checkinView, setCheckinView] = useState("Hoje");
+  const [registrosView, setRegistrosView] = useState("Exames");
   const [selectedDiaryDate, setSelectedDiaryDate] = useState(todayKey());
   const [diaryHistoryLimit, setDiaryHistoryLimit] = useState(10);
   const [loading, setLoading] = useState(true);
@@ -438,7 +500,6 @@ export default function App() {
   const [showManual, setShowManual] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(null);
   const reportRef = useRef(null);
-  const diaryFormRef = useRef(null);
   const manualRef = useRef(null);
   const [openQolInfo, setOpenQolInfo] = useState(null);
   const [openArtigo, setOpenArtigo] = useState(null);
@@ -1012,6 +1073,18 @@ export default function App() {
   const todayQol = qol[today] || {};
   const qolTotal = qolFields.reduce((sum, [key]) => sum + (Number(todayQol[key]) || 0), 0);
 
+  // Base da visão de evolução: as respostas do diário e a escala de bem-estar
+  // lado a lado, que é o ponto de terem virado uma aba só.
+  const ultimos14 = Array.from({ length: 14 }, (_, i) => addDays(today, i - 13));
+  const qolSerie = Object.keys(qol)
+    .sort()
+    .map((data) => ({
+      rotulo: new Date(data + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }),
+      total: qolFields.reduce((s, [key]) => s + (Number(qol[data][key]) || 0), 0),
+    }))
+    .filter((p) => p.total > 0)
+    .slice(-12);
+
   
   const daysSince = profile && profile.dataDiagnostico
     ? Math.floor((new Date(today + "T12:00:00") - new Date(profile.dataDiagnostico + "T12:00:00")) / 86400000)
@@ -1049,11 +1122,9 @@ export default function App() {
 
   const latestPhoto = registrosPeso.find((r) => r.foto);
   const TABS = [
-    ["diario", "Diário", NotebookPen],
+    ["checkin", "Check-in", HeartPulse],
     ["agenda", "Agenda", Calendar],
-    ["exames", "Exames", FlaskConical],
-    ["qol", "Check-in Saúde", HeartPulse],
-    ["orcamento", "Gastos", Wallet],
+    ["registros", "Registros", FolderOpen],
     ["recursos", "Acolhimento", BookOpen],
   ];
 
@@ -1141,8 +1212,14 @@ export default function App() {
           </div>
         )}
 
-        {tab === "diario" && (
-          <div ref={diaryFormRef}>
+        {tab === "checkin" && (
+          <div>
+            <div style={{ marginBottom: 14 }}>
+              <Segmented value={checkinView} onChange={setCheckinView} options={["Hoje", "Bem-estar", "Evolução"]} />
+            </div>
+
+            {checkinView === "Hoje" && (
+              <div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
               <div>
                 <div style={{ fontSize: 10.5, color: GREY, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em" }}>Editando o registro de</div>
@@ -1408,72 +1485,10 @@ export default function App() {
                 </div>
               )}
             </div>
-
-            {sortedDates.length > 0 && (
-              <>
-                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 2, color: INK }}>Histórico</div>
-                <div style={{ fontSize: 10.5, color: GREY, marginBottom: 8 }}>Toque em um dia para abrir e editar o registro.</div>
-                {sortedDates.slice(0, diaryHistoryLimit).map((date) => {
-                  const e = entries[date];
-                  const isSelected = date === selectedDiaryDate;
-                  return (
-                    <button
-                      key={date}
-                      onClick={() => {
-                        setSelectedDiaryDate(date);
-                        if (diaryFormRef.current) diaryFormRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-                      }}
-                      style={{
-                        width: "100%", textAlign: "left", fontFamily: "inherit", cursor: "pointer",
-                        background: isSelected ? "rgba(59,110,100,0.10)" : "#fff",
-                        border: isSelected ? `1px solid ${TEAL}` : "1px solid rgba(42,42,42,0.06)",
-                        borderRadius: 14, padding: "10px 14px", marginBottom: 6, fontSize: 12.5,
-                        display: "flex", justifyContent: "space-between",
-                      }}
-                    >
-                      <span style={{ fontWeight: 700, color: isSelected ? TEAL : INK }}>{new Date(date + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</span>
-                      <span style={{ color: e.corUrina === "Com sangue" ? TERRACOTTA : GREY, fontWeight: e.corUrina === "Com sangue" ? 700 : 400 }}>
-                        água {e.agua.toLowerCase()} · apetite {e.apetite.toLowerCase()} · {e.humor.toLowerCase()}{e.soro === "Fiz" ? " · soro feito" : ""}{e.corUrina === "Com sangue" ? " · ⚑ sangue na urina" : ""}
-                      </span>
-                    </button>
-                  );
-                })}
-                {sortedDates.length > diaryHistoryLimit && (
-                  <button
-                    onClick={() => setDiaryHistoryLimit((n) => n + 10)}
-                    style={{ width: "100%", padding: 10, borderRadius: 14, border: "1px solid rgba(42,42,42,0.1)", background: "none", color: TEAL, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12, cursor: "pointer", marginTop: 2, marginBottom: 6 }}
-                  >
-                    Ver mais dias ({sortedDates.length - diaryHistoryLimit} restantes)
-                  </button>
-                )}
-                {diaryHistoryLimit > 10 && sortedDates.length <= diaryHistoryLimit && (
-                  <button
-                    onClick={() => setDiaryHistoryLimit(10)}
-                    style={{ width: "100%", padding: 8, borderRadius: 14, border: "none", background: "none", color: GREY, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 11.5, cursor: "pointer", marginBottom: 6 }}
-                  >
-                    Mostrar menos
-                  </button>
-                )}
-              </>
+              </div>
             )}
 
-            <button
-              onClick={() => setShowReport(true)}
-              style={{ width: "100%", padding: 12, borderRadius: 14, border: "none", background: INK, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 16 }}
-            >
-              📄 Exportar resumo para o veterinário
-            </button>
-
-            <button
-              onClick={() => setShowManual(true)}
-              style={{ width: "100%", padding: 12, borderRadius: 14, border: `1.5px solid ${TERRACOTTA}`, background: "#fff", color: TERRACOTTA, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 10 }}
-            >
-              🐾 Manual do Tutor (para deixar com quem cuidar dele)
-            </button>
-          </div>
-        )}
-
-        {tab === "qol" && (
+            {checkinView === "Bem-estar" && (
           <div>
             <div style={{
               background: "linear-gradient(135deg, rgba(59,110,100,0.10), rgba(196,98,45,0.06))",
@@ -1565,205 +1580,122 @@ export default function App() {
               Esta escala organiza a conversa com seu veterinário — não substitui a avaliação clínica dele.
             </div>
           </div>
-        )}
+            )}
 
-        {tab === "orcamento" && (
-          <div>
-            <div ref={gastoFormRef} style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
-              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{editingGastoIndex !== null ? "Editar gasto" : "Registrar gastos"}</div>
-              <div style={{ fontSize: 11.5, color: GREY, marginBottom: 14 }}>Organize e controle suas despesas. Com base nessas informações o app poderá apresentar uma projeção de gastos para os próximos meses.</div>
-
-              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                <input
-                  type="date"
-                  value={novoGasto.data}
-                  onChange={(e) => setNovoGasto({ ...novoGasto, data: e.target.value })}
-                  style={{ flex: 1, padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 12.5 }}
-                />
-                <input
-                  type="number"
-                  value={novoGasto.valor}
-                  onChange={(e) => setNovoGasto({ ...novoGasto, valor: e.target.value })}
-                  placeholder="R$"
-                  style={{ width: 90, padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 12.5 }}
-                />
+            {checkinView === "Evolução" && (
+              <div>
+            <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 22, marginBottom: 14, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
+              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, marginBottom: 2 }}>Sinais dos últimos 14 dias</div>
+              <div style={{ fontSize: 11, color: GREY, marginBottom: 14 }}>
+                O que você respondeu no dia a dia, lado a lado. Serve para enxergar tendência — a leitura do que isso significa segue com seu veterinário.
               </div>
-              <input
-                value={novoGasto.categoria}
-                onChange={(e) => setNovoGasto({ ...novoGasto, categoria: e.target.value })}
-                placeholder="Categoria (ex: Ração, Consulta com nefro...)"
-                style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 12.5, marginBottom: 8, background: "#fff" }}
-              />
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-                {["Ração", "Areia", "Consulta", "Exame", "Medicamento", "Fluidoterapia", "Outro"].map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => setNovoGasto({ ...novoGasto, categoria: cat })}
-                    style={{
-                      padding: "5px 11px", borderRadius: 999, fontSize: 11.5, cursor: "pointer",
-                      border: novoGasto.categoria === cat ? "none" : "1px solid rgba(42,42,42,0.1)",
-                      background: novoGasto.categoria === cat ? TEAL : "transparent",
-                      color: novoGasto.categoria === cat ? "#fff" : GREY,
-                      fontWeight: novoGasto.categoria === cat ? 700 : 500,
-                    }}
-                  >
-                    {cat}
-                  </button>
+              <SinaisTimeline dias={ultimos14} entries={entries} />
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(42,42,42,0.06)" }}>
+                {["neutro", "acima", "abaixo", "vazio"].map((estado) => (
+                  <span key={estado} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 9.5, color: GREY }}>
+                    <span style={{ width: 12, height: 12, borderRadius: 3, background: SINAL_CORES[estado].bg }} />
+                    {SINAL_CORES[estado].label}
+                  </span>
                 ))}
               </div>
+            </div>
 
-              <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>Isso se repete?</label>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: novoGasto.frequencia === "Semanal" ? 10 : 12 }}>
-                {["Não se repete", "Semanal", "Mensal"].map((freq) => (
-                  <button
-                    key={freq}
-                    onClick={() => setNovoGasto({ ...novoGasto, frequencia: freq })}
-                    style={{
-                      padding: "7px 12px", borderRadius: 999, fontSize: 11.5, cursor: "pointer",
-                      border: novoGasto.frequencia === freq ? "none" : "1px solid rgba(42,42,42,0.1)",
-                      background: novoGasto.frequencia === freq ? "rgba(59,110,100,0.12)" : "transparent",
-                      color: novoGasto.frequencia === freq ? TEAL : GREY,
-                      fontWeight: novoGasto.frequencia === freq ? 700 : 500,
-                    }}
-                  >
-                    {freq}
-                  </button>
-                ))}
+            {hidratacaoOk > 0 && last7Dates.length > 0 && (
+              <div style={{ background: "rgba(59,110,100,0.09)", borderRadius: 16, padding: "14px 16px", marginBottom: 14, fontSize: 12.5, color: TEAL }}>
+                Em {hidratacaoOk} dos últimos {last7Dates.length} dias registrados, a água estava normal ou acima.
               </div>
+            )}
 
-              {novoGasto.frequencia === "Semanal" && (
-                <div style={{ marginBottom: 12 }}>
-                  <label style={{ fontSize: 11.5, color: GREY }}>Quantas vezes por semana? <span style={{ color: TEAL }}>(ex: fluidoterapia 3x)</span></label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="7"
-                    value={novoGasto.vezesPorSemana}
-                    onChange={(e) => setNovoGasto({ ...novoGasto, vezesPorSemana: e.target.value })}
-                    style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, marginTop: 4 }}
-                  />
+            <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 22, marginBottom: 14, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
+              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, marginBottom: 2 }}>Bem-estar ao longo do tempo</div>
+              <div style={{ fontSize: 11, color: GREY, marginBottom: 14 }}>
+                Cada ponto é um preenchimento da escala 5H2M. A linha marca os 35 pontos.
+              </div>
+              {qolSerie.length < 2 ? (
+                <div style={{ fontSize: 12, color: GREY, padding: "8px 0" }}>
+                  {qolSerie.length === 0
+                    ? "Você ainda não preencheu a escala. Ela fica na aba Bem-estar, aqui em cima."
+                    : "Com mais de um preenchimento dá para ver a tendência. Vale repetir a escala daqui a alguns dias."}
                 </div>
-              )}
-
-              <button
-                onClick={() => {
-                  if (!novoGasto.data || !novoGasto.valor) return;
-                  if (editingGastoIndex !== null) {
-                    const next = gastos.map((g, i) => (i === editingGastoIndex ? { ...novoGasto } : g));
-                    saveGastos(next);
-                    setEditingGastoIndex(null);
-                  } else {
-                    saveGastos([{ ...novoGasto }, ...gastos]);
-                  }
-                  setNovoGasto({ data: todayKey(), categoria: "Ração", valor: "", frequencia: "Não se repete", vezesPorSemana: 1 });
-                }}
-                style={{ width: "100%", padding: 10, borderRadius: 13, border: "none", background: TEAL, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}
-              >
-                {editingGastoIndex !== null ? "Salvar alterações" : "+ Registrar"}
-              </button>
-              {editingGastoIndex !== null && (
-                <button
-                  onClick={cancelEditGasto}
-                  style={{ width: "100%", padding: 9, borderRadius: 13, border: "none", background: "none", color: GREY, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12, cursor: "pointer", marginTop: 4 }}
-                >
-                  Cancelar edição
-                </button>
+              ) : (
+                <div style={{ height: 190 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={qolSerie} margin={{ top: 8, right: 10, left: -22, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(42,42,42,0.08)" vertical={false} />
+                      <XAxis dataKey="rotulo" tick={{ fontSize: 10, fill: GREY }} axisLine={false} tickLine={false} />
+                      <YAxis domain={[0, 70]} tick={{ fontSize: 10, fill: GREY }} axisLine={false} tickLine={false} />
+                      <Tooltip formatter={(v) => [`${v} pontos`, "Total"]} />
+                      <ReferenceLine y={35} stroke={TERRACOTTA} strokeDasharray="4 4" />
+                      <Line type="monotone" dataKey="total" stroke={TEAL} strokeWidth={2.5} dot={{ r: 3, fill: TEAL }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
               )}
             </div>
 
-            {gastos.length > 0 && (
+            {sortedDates.length > 0 && (
               <>
-                <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: "20px 14px 10px", marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
-                  <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 4, paddingLeft: 6 }}>Gastos por mês</div>
-                  <ResponsiveContainer width="100%" height={160}>
-                    <BarChart data={chartMes} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#EFE6D8" vertical={false} />
-                      <XAxis dataKey="mes" tick={{ fontSize: 11, fill: GREY }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 10, fill: GREY }} axisLine={false} tickLine={false} />
-                      <Tooltip formatter={(v) => [`R$ ${v}`, "Total"]} contentStyle={{ fontSize: 12, borderRadius: 13, border: "1px solid rgba(42,42,42,0.08)" }} />
-                      <Bar dataKey="total" fill={TERRACOTTA} radius={[5, 5, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-
-                <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: "20px 14px 10px", marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
-                  <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 4, paddingLeft: 6 }}>Gastos por categoria</div>
-                  <ResponsiveContainer width="100%" height={160}>
-                    <BarChart data={chartCategoria} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#EFE6D8" horizontal={false} />
-                      <XAxis type="number" tick={{ fontSize: 10, fill: GREY }} axisLine={false} tickLine={false} />
-                      <YAxis dataKey="categoria" type="category" tick={{ fontSize: 11.5, fill: INK }} axisLine={false} tickLine={false} width={78} />
-                      <Tooltip formatter={(v) => [`R$ ${v}`, "Total"]} contentStyle={{ fontSize: 12, borderRadius: 13, border: "1px solid rgba(42,42,42,0.08)" }} />
-                      <Bar dataKey="total" fill={TEAL} radius={[0, 5, 5, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-
-                <div style={{ background: INK, borderRadius: 22, padding: "16px 20px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ color: "#D8D8D8", fontSize: 12.5 }}>Total gasto registrado</span>
-                  <span style={{ color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 20 }}>R$ {totalGastoGeral.toFixed(2)}</span>
-                </div>
-
-                <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 20, marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
-                  <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 2 }}>Histórico de gastos</div>
-                  <div style={{ fontSize: 10.5, color: GREY, marginBottom: 10 }}>Toque no ✏️ para editar ou no 🗑 para apagar</div>
-                  {gastos.map((g, i) => (
-                    <div
-                      key={i}
-                      onClick={() => startEditGasto(i)}
+                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 2, color: INK }}>Histórico</div>
+                <div style={{ fontSize: 10.5, color: GREY, marginBottom: 8 }}>Toque em um dia para abrir e editar o registro.</div>
+                {sortedDates.slice(0, diaryHistoryLimit).map((date) => {
+                  const e = entries[date];
+                  const isSelected = date === selectedDiaryDate;
+                  return (
+                    <button
+                      key={date}
+                      onClick={() => {
+                        setSelectedDiaryDate(date);
+                        setCheckinView("Hoje");
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
                       style={{
-                        display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0",
-                        borderBottom: i < gastos.length - 1 ? "1px solid #F2EEE4" : "none", cursor: "pointer",
+                        width: "100%", textAlign: "left", fontFamily: "inherit", cursor: "pointer",
+                        background: isSelected ? "rgba(59,110,100,0.10)" : "#fff",
+                        border: isSelected ? `1px solid ${TEAL}` : "1px solid rgba(42,42,42,0.06)",
+                        borderRadius: 14, padding: "10px 14px", marginBottom: 6, fontSize: 12.5,
+                        display: "flex", justifyContent: "space-between",
                       }}
                     >
-                      <div>
-                        <div style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>{g.categoria || "Outro"}</div>
-                        <div style={{ fontSize: 11, color: GREY }}>
-                          {g.data && new Date(g.data + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
-                          {g.frequencia && g.frequencia !== "Não se repete" ? ` · ${g.frequencia === "Semanal" ? `${g.vezesPorSemana}x/semana` : "mensal"}` : ""}
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontSize: 15, fontWeight: 800, color: INK, fontFamily: "'Poppins', sans-serif" }}>R$ {(Number(g.valor) || 0).toFixed(2)}</span>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); startEditGasto(i); }}
-                          style={{ border: "none", background: "none", color: TEAL, fontSize: 15, cursor: "pointer", padding: 4, lineHeight: 1 }}
-                          aria-label="Editar gasto"
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setDeleteGastoIndex(i); }}
-                          style={{ border: "none", background: "none", color: GREY, fontSize: 15, cursor: "pointer", padding: 4, lineHeight: 1 }}
-                          aria-label="Apagar gasto"
-                        >
-                          🗑
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {projecaoItens.length > 0 && (
-                  <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
-                    <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, marginBottom: 4 }}>Projeção de gastos recorrentes</div>
-                    <div style={{ fontSize: 11, color: GREY, marginBottom: 14 }}>Baseada no último registro marcado como recorrente em cada categoria</div>
-                    {projecaoItens.map((it, i) => (
-                      <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(42,42,42,0.06)", fontSize: 12.5 }}>
-                        <span>
-                          {it.categoria}
-                          <span style={{ color: GREY, fontSize: 11 }}> · {it.frequencia === "Semanal" ? `${it.vezesPorSemana}x/semana` : "mensal"}</span>
-                        </span>
-                        <span style={{ fontWeight: 700 }}>R$ {it.mensal.toFixed(2)}</span>
-                      </div>
-                    ))}
-                    <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 12, marginTop: 4 }}>
-                      <span style={{ fontWeight: 700, fontSize: 13 }}>Estimativa por mês</span>
-                      <span style={{ fontWeight: 800, color: TERRACOTTA, fontSize: 16 }}>R$ {projecaoTotal.toFixed(2)}</span>
-                    </div>
-                  </div>
+                      <span style={{ fontWeight: 700, color: isSelected ? TEAL : INK }}>{new Date(date + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</span>
+                      <span style={{ color: e.corUrina === "Com sangue" ? TERRACOTTA : GREY, fontWeight: e.corUrina === "Com sangue" ? 700 : 400 }}>
+                        água {e.agua.toLowerCase()} · apetite {e.apetite.toLowerCase()} · {e.humor.toLowerCase()}{e.soro === "Fiz" ? " · soro feito" : ""}{e.corUrina === "Com sangue" ? " · ⚑ sangue na urina" : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+                {sortedDates.length > diaryHistoryLimit && (
+                  <button
+                    onClick={() => setDiaryHistoryLimit((n) => n + 10)}
+                    style={{ width: "100%", padding: 10, borderRadius: 14, border: "1px solid rgba(42,42,42,0.1)", background: "none", color: TEAL, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12, cursor: "pointer", marginTop: 2, marginBottom: 6 }}
+                  >
+                    Ver mais dias ({sortedDates.length - diaryHistoryLimit} restantes)
+                  </button>
+                )}
+                {diaryHistoryLimit > 10 && sortedDates.length <= diaryHistoryLimit && (
+                  <button
+                    onClick={() => setDiaryHistoryLimit(10)}
+                    style={{ width: "100%", padding: 8, borderRadius: 14, border: "none", background: "none", color: GREY, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 11.5, cursor: "pointer", marginBottom: 6 }}
+                  >
+                    Mostrar menos
+                  </button>
                 )}
               </>
+            )}
+
+            <button
+              onClick={() => setShowReport(true)}
+              style={{ width: "100%", padding: 12, borderRadius: 14, border: "none", background: INK, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 16 }}
+            >
+              📄 Exportar resumo para o veterinário
+            </button>
+
+            <button
+              onClick={() => setShowManual(true)}
+              style={{ width: "100%", padding: 12, borderRadius: 14, border: `1.5px solid ${TERRACOTTA}`, background: "#fff", color: TERRACOTTA, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 10 }}
+            >
+              🐾 Manual do Tutor (para deixar com quem cuidar dele)
+            </button>
+              </div>
             )}
           </div>
         )}
@@ -2022,8 +1954,13 @@ export default function App() {
             )}
           </div>
         )}
+        {tab === "registros" && (
+          <div>
+            <div style={{ marginBottom: 14 }}>
+              <Segmented value={registrosView} onChange={setRegistrosView} options={["Exames", "Gastos"]} />
+            </div>
 
-        {tab === "exames" && (
+            {registrosView === "Exames" && (
           <div>
             <div ref={exameFormRef} style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
               <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{editingExameIndex !== null ? "Editar registro" : "Novo registro"}</div>
@@ -2181,6 +2118,209 @@ export default function App() {
                   Valores organizados por tipo de exame para facilitar a consulta — a leitura e o significado seguem sempre com seu veterinário.
                 </div>
               </>
+            )}
+          </div>
+            )}
+
+            {registrosView === "Gastos" && (
+          <div>
+            <div ref={gastoFormRef} style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
+              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{editingGastoIndex !== null ? "Editar gasto" : "Registrar gastos"}</div>
+              <div style={{ fontSize: 11.5, color: GREY, marginBottom: 14 }}>Organize e controle suas despesas. Com base nessas informações o app poderá apresentar uma projeção de gastos para os próximos meses.</div>
+
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <input
+                  type="date"
+                  value={novoGasto.data}
+                  onChange={(e) => setNovoGasto({ ...novoGasto, data: e.target.value })}
+                  style={{ flex: 1, padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 12.5 }}
+                />
+                <input
+                  type="number"
+                  value={novoGasto.valor}
+                  onChange={(e) => setNovoGasto({ ...novoGasto, valor: e.target.value })}
+                  placeholder="R$"
+                  style={{ width: 90, padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 12.5 }}
+                />
+              </div>
+              <input
+                value={novoGasto.categoria}
+                onChange={(e) => setNovoGasto({ ...novoGasto, categoria: e.target.value })}
+                placeholder="Categoria (ex: Ração, Consulta com nefro...)"
+                style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 12.5, marginBottom: 8, background: "#fff" }}
+              />
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                {["Ração", "Areia", "Consulta", "Exame", "Medicamento", "Fluidoterapia", "Outro"].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setNovoGasto({ ...novoGasto, categoria: cat })}
+                    style={{
+                      padding: "5px 11px", borderRadius: 999, fontSize: 11.5, cursor: "pointer",
+                      border: novoGasto.categoria === cat ? "none" : "1px solid rgba(42,42,42,0.1)",
+                      background: novoGasto.categoria === cat ? TEAL : "transparent",
+                      color: novoGasto.categoria === cat ? "#fff" : GREY,
+                      fontWeight: novoGasto.categoria === cat ? 700 : 500,
+                    }}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>Isso se repete?</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: novoGasto.frequencia === "Semanal" ? 10 : 12 }}>
+                {["Não se repete", "Semanal", "Mensal"].map((freq) => (
+                  <button
+                    key={freq}
+                    onClick={() => setNovoGasto({ ...novoGasto, frequencia: freq })}
+                    style={{
+                      padding: "7px 12px", borderRadius: 999, fontSize: 11.5, cursor: "pointer",
+                      border: novoGasto.frequencia === freq ? "none" : "1px solid rgba(42,42,42,0.1)",
+                      background: novoGasto.frequencia === freq ? "rgba(59,110,100,0.12)" : "transparent",
+                      color: novoGasto.frequencia === freq ? TEAL : GREY,
+                      fontWeight: novoGasto.frequencia === freq ? 700 : 500,
+                    }}
+                  >
+                    {freq}
+                  </button>
+                ))}
+              </div>
+
+              {novoGasto.frequencia === "Semanal" && (
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 11.5, color: GREY }}>Quantas vezes por semana? <span style={{ color: TEAL }}>(ex: fluidoterapia 3x)</span></label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="7"
+                    value={novoGasto.vezesPorSemana}
+                    onChange={(e) => setNovoGasto({ ...novoGasto, vezesPorSemana: e.target.value })}
+                    style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, marginTop: 4 }}
+                  />
+                </div>
+              )}
+
+              <button
+                onClick={() => {
+                  if (!novoGasto.data || !novoGasto.valor) return;
+                  if (editingGastoIndex !== null) {
+                    const next = gastos.map((g, i) => (i === editingGastoIndex ? { ...novoGasto } : g));
+                    saveGastos(next);
+                    setEditingGastoIndex(null);
+                  } else {
+                    saveGastos([{ ...novoGasto }, ...gastos]);
+                  }
+                  setNovoGasto({ data: todayKey(), categoria: "Ração", valor: "", frequencia: "Não se repete", vezesPorSemana: 1 });
+                }}
+                style={{ width: "100%", padding: 10, borderRadius: 13, border: "none", background: TEAL, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}
+              >
+                {editingGastoIndex !== null ? "Salvar alterações" : "+ Registrar"}
+              </button>
+              {editingGastoIndex !== null && (
+                <button
+                  onClick={cancelEditGasto}
+                  style={{ width: "100%", padding: 9, borderRadius: 13, border: "none", background: "none", color: GREY, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12, cursor: "pointer", marginTop: 4 }}
+                >
+                  Cancelar edição
+                </button>
+              )}
+            </div>
+
+            {gastos.length > 0 && (
+              <>
+                <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: "20px 14px 10px", marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
+                  <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 4, paddingLeft: 6 }}>Gastos por mês</div>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <BarChart data={chartMes} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#EFE6D8" vertical={false} />
+                      <XAxis dataKey="mes" tick={{ fontSize: 11, fill: GREY }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: GREY }} axisLine={false} tickLine={false} />
+                      <Tooltip formatter={(v) => [`R$ ${v}`, "Total"]} contentStyle={{ fontSize: 12, borderRadius: 13, border: "1px solid rgba(42,42,42,0.08)" }} />
+                      <Bar dataKey="total" fill={TERRACOTTA} radius={[5, 5, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: "20px 14px 10px", marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
+                  <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 4, paddingLeft: 6 }}>Gastos por categoria</div>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <BarChart data={chartCategoria} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#EFE6D8" horizontal={false} />
+                      <XAxis type="number" tick={{ fontSize: 10, fill: GREY }} axisLine={false} tickLine={false} />
+                      <YAxis dataKey="categoria" type="category" tick={{ fontSize: 11.5, fill: INK }} axisLine={false} tickLine={false} width={78} />
+                      <Tooltip formatter={(v) => [`R$ ${v}`, "Total"]} contentStyle={{ fontSize: 12, borderRadius: 13, border: "1px solid rgba(42,42,42,0.08)" }} />
+                      <Bar dataKey="total" fill={TEAL} radius={[0, 5, 5, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div style={{ background: INK, borderRadius: 22, padding: "16px 20px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ color: "#D8D8D8", fontSize: 12.5 }}>Total gasto registrado</span>
+                  <span style={{ color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 20 }}>R$ {totalGastoGeral.toFixed(2)}</span>
+                </div>
+
+                <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 20, marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
+                  <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 2 }}>Histórico de gastos</div>
+                  <div style={{ fontSize: 10.5, color: GREY, marginBottom: 10 }}>Toque no ✏️ para editar ou no 🗑 para apagar</div>
+                  {gastos.map((g, i) => (
+                    <div
+                      key={i}
+                      onClick={() => startEditGasto(i)}
+                      style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0",
+                        borderBottom: i < gastos.length - 1 ? "1px solid #F2EEE4" : "none", cursor: "pointer",
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>{g.categoria || "Outro"}</div>
+                        <div style={{ fontSize: 11, color: GREY }}>
+                          {g.data && new Date(g.data + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
+                          {g.frequencia && g.frequencia !== "Não se repete" ? ` · ${g.frequencia === "Semanal" ? `${g.vezesPorSemana}x/semana` : "mensal"}` : ""}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 15, fontWeight: 800, color: INK, fontFamily: "'Poppins', sans-serif" }}>R$ {(Number(g.valor) || 0).toFixed(2)}</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); startEditGasto(i); }}
+                          style={{ border: "none", background: "none", color: TEAL, fontSize: 15, cursor: "pointer", padding: 4, lineHeight: 1 }}
+                          aria-label="Editar gasto"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDeleteGastoIndex(i); }}
+                          style={{ border: "none", background: "none", color: GREY, fontSize: 15, cursor: "pointer", padding: 4, lineHeight: 1 }}
+                          aria-label="Apagar gasto"
+                        >
+                          🗑
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {projecaoItens.length > 0 && (
+                  <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
+                    <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, marginBottom: 4 }}>Projeção de gastos recorrentes</div>
+                    <div style={{ fontSize: 11, color: GREY, marginBottom: 14 }}>Baseada no último registro marcado como recorrente em cada categoria</div>
+                    {projecaoItens.map((it, i) => (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(42,42,42,0.06)", fontSize: 12.5 }}>
+                        <span>
+                          {it.categoria}
+                          <span style={{ color: GREY, fontSize: 11 }}> · {it.frequencia === "Semanal" ? `${it.vezesPorSemana}x/semana` : "mensal"}</span>
+                        </span>
+                        <span style={{ fontWeight: 700 }}>R$ {it.mensal.toFixed(2)}</span>
+                      </div>
+                    ))}
+                    <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 12, marginTop: 4 }}>
+                      <span style={{ fontWeight: 700, fontSize: 13 }}>Estimativa por mês</span>
+                      <span style={{ fontWeight: 800, color: TERRACOTTA, fontSize: 16 }}>R$ {projecaoTotal.toFixed(2)}</span>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
             )}
           </div>
         )}
@@ -2851,10 +2991,10 @@ export default function App() {
             {/* Lista compacta — os outros pilares, sem repetir a mesma caixa grande */}
             <div style={{ background: "rgba(255,255,255,0.6)", borderRadius: 18, overflow: "hidden" }}>
               {[
-                { Icon: NotebookPen, titulo: "Diário e histórico em um só lugar", color: TEAL },
+                { Icon: HeartPulse, titulo: "Check-in diário e escala de bem-estar", color: TEAL },
                 { Icon: Calendar, titulo: "Agenda e lembretes", color: TERRACOTTA },
-                { Icon: Wallet, titulo: "Controle de gastos", color: TEAL },
-                { Icon: HeartPulse, titulo: "Check-in de qualidade de vida", color: TERRACOTTA },
+                { Icon: FolderOpen, titulo: "Exames e gastos guardados", color: TEAL },
+                { Icon: BookOpen, titulo: "Acolhimento e conteúdo de apoio", color: TERRACOTTA },
               ].map(({ Icon, titulo, color }, i, arr) => (
                 <div key={i} style={{
                   display: "flex", alignItems: "center", gap: 12, padding: "11px 14px",
