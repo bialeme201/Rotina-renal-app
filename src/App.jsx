@@ -3,24 +3,44 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import {
   NotebookPen, FlaskConical, HeartPulse, Wallet, BookOpen,
   Droplet, UtensilsCrossed, Smile, Waves, Syringe, Palette, Cat,
-  ExternalLink, Info, Stethoscope, Calendar,
+  ExternalLink, Info, Stethoscope, Calendar, Plus, X, Bell,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import { subscribeToPush, syncSchedule, getPushStatus, pushSupported } from "./push.js";
 import { getStorageEstimate } from "./storage.js";
 import { track } from "@vercel/analytics/react";
+import { TEAL, TERRACOTTA, INK, CREAM, SAND, GREY } from "./theme.js";
+import { MonthCalendar, WeekOverview, DayPanel, TodaySummary } from "./AgendaCalendar.jsx";
+import {
+  dateKeyFromDate, addDays, addMonths, startOfWeek, monthKeyOf, medOccursOn, medStatus,
+  medHorarios, medFrequencia, medFrequenciaLabel, medCheckKey, agendaStatus, agendaTitulo,
+  agendaExames, jejumInfo, daysUntilLabel as agendaDaysUntilLabel, normalizeLembretes,
+  lembretesLabel, formatDuration, DEFAULT_LEMBRETES, DIAS_ANTES_OPCOES, MINUTOS_ANTES_OPCOES,
+  JEJUM_HORAS_OPCOES, JEJUM_MINUTOS_MED_OPCOES,
+} from "./agendaLogic.js";
 
-const TEAL = "#3B6E64";
-const TERRACOTTA = "#C4622D";
-const INK = "#2A2A2A";
-const CREAM = "#F4F1EA";
-const SAND = "#EFE6D8";
-const GREY = "#6B6B6B";
-
+// Data local do aparelho — toISOString() devolveria o dia seguinte a partir
+// das 21h no horário de Brasília, bagunçando "hoje" no diário e na agenda.
 function todayKey() {
-  return new Date().toISOString().slice(0, 10);
+  return dateKeyFromDate(new Date());
 }
+
+const EMPTY_AGENDA_ITEM = {
+  tipo: "", exames: [], data: "", horario: "", obs: "",
+  jejum: false, jejumHoras: 8, lembretes: DEFAULT_LEMBRETES, concluido: false,
+};
+
+const EMPTY_RECORRENTE = {
+  nome: "", horarios: [""], frequencia: "24h", dias: [0, 1, 2, 3, 4, 5, 6],
+  duracao: "continuo", dataInicio: todayKey(), dataFim: "",
+  jejum: false, jejumMinutos: 60,
+};
+
+const HORARIOS_SUGERIDOS = ["07:00", "08:00", "12:00", "18:00", "20:00", "22:00"];
+
+const FREQ_LABEL = { "24h": "24h", "48h": "48h", dias: "Dias fixos" };
+const FREQ_VALUE = { "24h": "24h", "48h": "48h", "Dias fixos": "dias" };
 
 function compressImage(file, maxWidth = 360, quality = 0.6) {
   return new Promise((resolve, reject) => {
@@ -118,6 +138,96 @@ function Segmented({ value, onChange, options }) {
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function ChipToggle({ active, onClick, children, color = TERRACOTTA }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: "6px 11px", borderRadius: 999, fontSize: 11.5, cursor: "pointer",
+        border: active ? "none" : "1px solid rgba(42,42,42,0.1)",
+        background: active ? `${color}22` : "transparent",
+        color: active ? color : GREY,
+        fontWeight: active ? 700 : 500,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// Antecedência dos avisos: um ou mais dias antes, e quanto antes na hora.
+function LembretesPicker({ value, onChange }) {
+  const lembretes = value || { diasAntes: [], minutosAntes: 60 };
+  const toggleDia = (d) => {
+    const dias = lembretes.diasAntes.includes(d)
+      ? lembretes.diasAntes.filter((x) => x !== d)
+      : [...lembretes.diasAntes, d].sort((a, b) => a - b);
+    onChange({ ...lembretes, diasAntes: dias });
+  };
+
+  return (
+    <div>
+      <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>Avisar com dias de antecedência</label>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+        {DIAS_ANTES_OPCOES.map((d) => (
+          <ChipToggle key={d} active={lembretes.diasAntes.includes(d)} onClick={() => toggleDia(d)} color={TEAL}>
+            {d === 1 ? "1 dia antes" : d === 7 ? "1 semana antes" : `${d} dias antes`}
+          </ChipToggle>
+        ))}
+      </div>
+      <div style={{ fontSize: 10.5, color: GREY, marginBottom: 12 }}>
+        {lembretes.diasAntes.length === 0
+          ? "Nenhum aviso antecipado — só no dia."
+          : `Você recebe um aviso ${lembretes.diasAntes.map((d) => (d === 1 ? "1 dia" : `${d} dias`)).join(" e ")} antes, além do aviso no dia.`}
+      </div>
+
+      <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>E no dia, avisar antes do horário</label>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {MINUTOS_ANTES_OPCOES.map((m) => (
+          <ChipToggle key={m} active={lembretes.minutosAntes === m} onClick={() => onChange({ ...lembretes, minutosAntes: m })} color={TEAL}>
+            {formatDuration(m)} antes
+          </ChipToggle>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Folha modal que sobe de baixo — mantém o cadastro fora do caminho até
+// alguém pedir por ele.
+function Sheet({ title, subtitle, onClose, children }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: "fixed", inset: 0, background: "rgba(35,35,35,0.5)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: CREAM, width: "100%", maxWidth: 460, maxHeight: "90vh", overflowY: "auto",
+          borderRadius: "24px 24px 0 0", padding: "20px 20px calc(env(safe-area-inset-bottom, 0px) + 24px)",
+        }}
+      >
+        <div style={{ width: 38, height: 4, borderRadius: 2, background: "rgba(42,42,42,0.15)", margin: "0 auto 16px" }} />
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
+          <div>
+            <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 16 }}>{title}</div>
+            {subtitle && <div style={{ fontSize: 11.5, color: GREY, marginTop: 2 }}>{subtitle}</div>}
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Fechar"
+            style={{ border: "none", background: "rgba(42,42,42,0.06)", borderRadius: "50%", width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, color: GREY }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+        {children}
+      </div>
     </div>
   );
 }
@@ -230,7 +340,7 @@ const ARTIGOS = [
 const BACKUP_KEYS = [
   "diary-entries", "qol-scores", "budget-data", "exames-data", "gastos-data",
   "peso-fotos-data", "agenda-data", "recorrentes-data", "recorrentes-checks-data",
-  "profile-data", "diario-intro-seen",
+  "profile-data", "diario-intro-seen", "notif-prefs-data",
 ];
 
 export default function App() {
@@ -255,17 +365,20 @@ export default function App() {
   const [novoPeso, setNovoPeso] = useState({ data: todayKey(), peso: "", foto: null });
   const [uploading, setUploading] = useState(false);
   const [agendaItems, setAgendaItems] = useState([]);
-  const [novoAgendaItem, setNovoAgendaItem] = useState({ tipo: "", data: "", horario: "", obs: "" });
+  const [novoAgendaItem, setNovoAgendaItem] = useState(EMPTY_AGENDA_ITEM);
   const [editingAgendaId, setEditingAgendaId] = useState(null);
-  const agendaFormRef = useRef(null);
   const [recorrentes, setRecorrentes] = useState([]);
   const [recorrenteChecks, setRecorrenteChecks] = useState({});
   const [editingRecorrenteId, setEditingRecorrenteId] = useState(null);
-  const recorrenteFormRef = useRef(null);
-  const [novoRecorrente, setNovoRecorrente] = useState({
-    nome: "", horario: "", dias: [0, 1, 2, 3, 4, 5, 6],
-    duracao: "continuo", dataInicio: todayKey(), dataFim: "",
-  });
+  const [novoRecorrente, setNovoRecorrente] = useState(EMPTY_RECORRENTE);
+  // Visões da agenda: mês (calendário), semana (cumprido/atraso) e lista.
+  const [agendaView, setAgendaView] = useState("Mês");
+  const [selectedDay, setSelectedDay] = useState(todayKey());
+  const [calendarMonth, setCalendarMonth] = useState(monthKeyOf(todayKey()));
+  const [weekStart, setWeekStart] = useState(startOfWeek(todayKey()));
+  const [sheet, setSheet] = useState(null); // null | "menu" | "compromisso" | "remedio"
+  const [notifPrefs, setNotifPrefs] = useState(DEFAULT_LEMBRETES);
+  const [novoExameNome, setNovoExameNome] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
   const [medSavedMsg, setMedSavedMsg] = useState("");
   const [showDiarioIntro, setShowDiarioIntro] = useState(false);
@@ -354,13 +467,7 @@ export default function App() {
     return `https://wa.me/?text=${encoded}`;
   }
   function daysUntilLabel(dateStr) {
-    if (!dateStr) return "";
-    const diff = Math.round((new Date(dateStr + "T12:00:00") - new Date(today + "T12:00:00")) / 86400000);
-    if (diff === 0) return "Hoje";
-    if (diff === 1) return "Amanhã";
-    if (diff > 1) return `Em ${diff} dias`;
-    if (diff === -1) return "Ontem";
-    return `Atrasado (${Math.abs(diff)}d)`;
+    return agendaDaysUntilLabel(dateStr, today);
   }
   const last7Dates = sortedDates.slice(0, 7);
   const hidratacaoOk = last7Dates.filter((d) => entries[d].agua === "Normal" || entries[d].agua === "Mais").length;
@@ -369,13 +476,29 @@ export default function App() {
   const selectedEntry = entries[selectedDiaryDate] || { agua: "Normal", apetite: "Normal", humor: "Tranquilo", urina: "Normal", nota: "" };
   const isEditingToday = selectedDiaryDate === today;
 
-  const todayWeekday = new Date(today + "T12:00:00").getDay();
-  const recorrentesHoje = recorrentes.filter((r) => {
-    if (!r.dias.includes(todayWeekday)) return false;
-    if (r.dataInicio && today < r.dataInicio) return false;
-    if (r.duracao === "determinado" && r.dataFim && today > r.dataFim) return false;
-    return true;
-  });
+  const agendaGroups = { late: [], today: [], future: [], done: [] };
+  sortedAgenda.forEach((it) => agendaGroups[agendaStatus(it, today)].push(it));
+  agendaGroups.late.reverse();
+  agendaGroups.done.reverse();
+
+  // Marcadores do calendário: só o suficiente para o dia "falar" de longe.
+  // Dose sem marcação só aparece em vermelho na semana corrente — mais atrás
+  // que isso o histórico vira um paredão de alerta que não ajuda ninguém.
+  const limiteAtrasoRemedio = addDays(today, -7);
+  function marksForDay(key) {
+    const compromissosDoDia = agendaItems.filter((it) => it.data === key);
+    const remediosDoDia = recorrentes.filter((med) => medOccursOn(med, key));
+    const statusRemedios = remediosDoDia.map((med) => medStatus(med, key, recorrenteChecks, today));
+    const statusCompromissos = compromissosDoDia.map((it) => agendaStatus(it, today));
+    return {
+      compromissos: compromissosDoDia.length,
+      compromissoLate: statusCompromissos.includes("late"),
+      compromissosDone: compromissosDoDia.length > 0 && statusCompromissos.every((s) => s === "done"),
+      remedios: remediosDoDia.length,
+      remedioLate: key >= limiteAtrasoRemedio && statusRemedios.includes("late"),
+      remediosDone: remediosDoDia.length > 0 && statusRemedios.every((s) => s === "done"),
+    };
+  }
 
   useEffect(() => {
     track("view_tab", { tab });
@@ -418,6 +541,10 @@ export default function App() {
       try {
         const rc = await window.storage.get("recorrentes-checks-data");
         if (rc) setRecorrenteChecks(JSON.parse(rc.value));
+      } catch (err) {}
+      try {
+        const np = await window.storage.get("notif-prefs-data");
+        if (np) setNotifPrefs(normalizeLembretes(JSON.parse(np.value)));
       } catch (err) {}
       try {
         const p = await window.storage.get("profile-data");
@@ -586,40 +713,127 @@ export default function App() {
     syncSchedule(profile && profile.nome, agendaItems, next);
   }
 
+  async function saveNotifPrefs(next) {
+    const normalized = normalizeLembretes(next);
+    setNotifPrefs(normalized);
+    await persist("notif-prefs-data", JSON.stringify(normalized));
+  }
+
+  function openNovoCompromisso(dataKey) {
+    setEditingAgendaId(null);
+    setNovoExameNome("");
+    setNovoAgendaItem({ ...EMPTY_AGENDA_ITEM, data: dataKey || selectedDay, lembretes: notifPrefs });
+    setSheet("compromisso");
+  }
+
   function startEditAgendaItem(item) {
     setEditingAgendaId(item.id);
-    setNovoAgendaItem({ tipo: item.tipo || "", data: item.data || "", horario: item.horario || "", obs: item.obs || "" });
-    if (agendaFormRef.current) agendaFormRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    setNovoExameNome("");
+    setNovoAgendaItem({
+      tipo: item.tipo || "",
+      exames: agendaExames(item),
+      data: item.data || "",
+      horario: item.horario || "",
+      obs: item.obs || "",
+      jejum: !!item.jejum,
+      jejumHoras: Number(item.jejumHoras) || 8,
+      lembretes: normalizeLembretes(item.lembretes),
+      concluido: !!item.concluido,
+    });
+    setSheet("compromisso");
   }
 
   function cancelEditAgendaItem() {
     setEditingAgendaId(null);
-    setNovoAgendaItem({ tipo: "", data: "", horario: "", obs: "" });
+    setNovoAgendaItem(EMPTY_AGENDA_ITEM);
+    setNovoExameNome("");
+    setSheet(null);
+  }
+
+  function openNovoRemedio(dataKey) {
+    setEditingRecorrenteId(null);
+    setNovoRecorrente({ ...EMPTY_RECORRENTE, dataInicio: dataKey || todayKey() });
+    setSheet("remedio");
   }
 
   function startEditRecorrente(med) {
     setEditingRecorrenteId(med.id);
     setNovoRecorrente({
       nome: med.nome || "",
-      horario: med.horario || "",
+      horarios: medHorarios(med).length ? medHorarios(med) : [""],
+      frequencia: medFrequencia(med),
       dias: med.dias || [0, 1, 2, 3, 4, 5, 6],
       duracao: med.duracao || "continuo",
       dataInicio: med.dataInicio || todayKey(),
       dataFim: med.dataFim || "",
+      jejum: !!med.jejum,
+      jejumMinutos: Number(med.jejumMinutos) || 60,
     });
-    if (recorrenteFormRef.current) recorrenteFormRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    setSheet("remedio");
   }
 
   function cancelEditRecorrente() {
     setEditingRecorrenteId(null);
-    setNovoRecorrente({ nome: "", horario: "", dias: [0, 1, 2, 3, 4, 5, 6], duracao: "continuo", dataInicio: todayKey(), dataFim: "" });
+    setNovoRecorrente(EMPTY_RECORRENTE);
+    setSheet(null);
   }
 
-  async function toggleRecorrenteCheck(medId) {
-    const key = `${today}_${medId}`;
+  // Também aceita datas passadas, para dar conta de marcar o que ficou
+  // pendente na visão da semana.
+  async function toggleRecorrenteCheck(medId, dateKey) {
+    const key = medCheckKey(dateKey || today, medId);
     const next = { ...recorrenteChecks, [key]: !recorrenteChecks[key] };
+    if (!next[key]) delete next[key];
     setRecorrenteChecks(next);
     await persist("recorrentes-checks-data", JSON.stringify(next));
+  }
+
+  function toggleAgendaConcluido(item) {
+    saveAgendaItems(agendaItems.map((it) => (it.id === item.id ? { ...it, concluido: !it.concluido } : it)));
+  }
+
+  function saveCompromissoFromForm() {
+    const item = { ...novoAgendaItem, lembretes: normalizeLembretes(novoAgendaItem.lembretes) };
+    if (!item.data || (!item.tipo && item.exames.length === 0)) return;
+    if (!item.tipo) item.tipo = item.exames.length > 1 ? "Exames" : item.exames[0];
+    if (editingAgendaId !== null) {
+      saveAgendaItems(agendaItems.map((it) => (it.id === editingAgendaId ? { ...item, id: editingAgendaId } : it)));
+    } else {
+      track("add_agenda_item");
+      saveAgendaItems([...agendaItems, { ...item, id: Date.now() }]);
+    }
+    setSelectedDay(item.data);
+    setCalendarMonth(monthKeyOf(item.data));
+    setWeekStart(startOfWeek(item.data));
+    cancelEditAgendaItem();
+  }
+
+  function saveRemedioFromForm() {
+    const horarios = novoRecorrente.horarios.filter(Boolean);
+    if (!novoRecorrente.nome) return;
+    if (novoRecorrente.frequencia === "dias" && novoRecorrente.dias.length === 0) return;
+    const med = {
+      ...novoRecorrente,
+      horarios,
+      horario: horarios[0] || "", // mantido para compatibilidade com cadastros antigos
+      dias: novoRecorrente.frequencia === "dias" ? novoRecorrente.dias : [0, 1, 2, 3, 4, 5, 6],
+    };
+    if (editingRecorrenteId !== null) {
+      saveRecorrentes(recorrentes.map((m) => (m.id === editingRecorrenteId ? { ...med, id: editingRecorrenteId } : m)));
+      setMedSavedMsg(`✓ ${med.nome} atualizado`);
+    } else {
+      track("add_recurring_med");
+      saveRecorrentes([...recorrentes, { ...med, id: Date.now() }]);
+      setMedSavedMsg(`✓ ${med.nome} incluído na agenda`);
+    }
+    setTimeout(() => setMedSavedMsg(""), 2800);
+    cancelEditRecorrente();
+  }
+
+  function goToDay(key) {
+    setSelectedDay(key);
+    setCalendarMonth(monthKeyOf(key));
+    setWeekStart(startOfWeek(key));
   }
 
   function flashSaved() {
@@ -1509,7 +1723,7 @@ export default function App() {
             {pushSupported() && pushStatus !== "subscribed" && (
               <div style={{ background: "rgba(59,110,100,0.10)", border: `1px solid rgba(59,110,100,0.2)`, borderRadius: 16, padding: "14px 16px", marginBottom: 14 }}>
                 <div style={{ fontSize: 12.5, color: INK, marginBottom: 10 }}>
-                  Ative as notificações para receber um aviso no celular na hora do remédio e nos compromissos do dia — mesmo com o app fechado.
+                  Ative as notificações para receber um aviso no celular na hora do remédio e antes dos compromissos — mesmo com o app fechado.
                 </div>
                 <button
                   onClick={handleEnableNotifications}
@@ -1524,348 +1738,205 @@ export default function App() {
               </div>
             )}
             {pushStatus === "subscribed" && (
-              <div style={{ fontSize: 11, color: TEAL, fontWeight: 700, marginBottom: 14 }}>
-                🔔 Notificações ativadas neste aparelho
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 14 }}>
+                <div style={{ fontSize: 11, color: TEAL, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}>
+                  <Bell size={13} /> Notificações ativadas neste aparelho
+                </div>
+                <button
+                  onClick={() => setSheet("notif")}
+                  style={{ border: "none", background: "none", color: TEAL, fontSize: 11.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline", padding: 0 }}
+                >
+                  ajustar avisos
+                </button>
               </div>
             )}
 
-            <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 12, letterSpacing: "0.04em", textTransform: "uppercase", color: TERRACOTTA, marginBottom: 10 }}>Eventos únicos</div>
-            <div ref={agendaFormRef} style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 16, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
-              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{editingAgendaId !== null ? "Editar compromisso" : "Novo compromisso"}</div>
-              <div style={{ fontSize: 11.5, color: GREY, marginBottom: 14 }}>De acordo com a orientação do seu veterinário — o app só ajuda a lembrar.</div>
+            <TodaySummary
+              todayKey={today}
+              agendaItems={agendaItems}
+              recorrentes={recorrentes}
+              checks={recorrenteChecks}
+              onSelectDay={goToDay}
+            />
 
-              <label style={{ fontSize: 12, color: GREY }}>Tipo</label>
-              <input
-                value={novoAgendaItem.tipo}
-                onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, tipo: e.target.value })}
-                placeholder="Ex: Exame de sangue, Ultrassom..."
-                style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 8px", background: "#fff" }}
-              />
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-                {["Consulta", "Exame de sangue", "Exame de urina", "Ultrassom", "Fluidoterapia", "Limpeza do dispositivo", "Outro"].map((tipo) => (
-                  <button
-                    key={tipo}
-                    onClick={() => setNovoAgendaItem({ ...novoAgendaItem, tipo })}
-                    style={{
-                      padding: "6px 11px", borderRadius: 999, fontSize: 11.5, cursor: "pointer",
-                      border: novoAgendaItem.tipo === tipo ? "none" : "1px solid rgba(42,42,42,0.1)",
-                      background: novoAgendaItem.tipo === tipo ? "rgba(196,98,45,0.14)" : "transparent",
-                      color: novoAgendaItem.tipo === tipo ? TERRACOTTA : GREY,
-                      fontWeight: novoAgendaItem.tipo === tipo ? 700 : 500,
-                    }}
-                  >
-                    {tipo}
-                  </button>
-                ))}
-              </div>
-
-              <label style={{ fontSize: 12, color: GREY }}>Data</label>
-              <input
-                type="date"
-                value={novoAgendaItem.data}
-                onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, data: e.target.value })}
-                style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 10px", background: "#fff" }}
-              />
-
-              <label style={{ fontSize: 12, color: GREY }}>Horário</label>
-              <input
-                type="time"
-                value={novoAgendaItem.horario}
-                onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, horario: e.target.value })}
-                style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 10px", background: "#fff" }}
-              />
-
-              <label style={{ fontSize: 12, color: GREY }}>Observações</label>
-              <textarea
-                value={novoAgendaItem.obs}
-                onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, obs: e.target.value })}
-                placeholder="Alguma nota extra sobre esse compromisso..."
-                style={{ width: "100%", minHeight: 50, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", padding: 8, fontSize: 13, fontFamily: "inherit", margin: "4px 0 12px", resize: "vertical" }}
-              />
-
-              <button
-                onClick={() => {
-                  if (!novoAgendaItem.data || !novoAgendaItem.tipo) return;
-                  if (editingAgendaId !== null) {
-                    saveAgendaItems(agendaItems.map((it) => (it.id === editingAgendaId ? { ...novoAgendaItem, id: editingAgendaId } : it)));
-                    setEditingAgendaId(null);
-                  } else {
-                    saveAgendaItems([...agendaItems, { ...novoAgendaItem, id: Date.now() }]);
-                  }
-                  setNovoAgendaItem({ tipo: "", data: "", horario: "", obs: "" });
-                }}
-                style={{ width: "100%", padding: 11, borderRadius: 13, border: "none", background: TERRACOTTA, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
-              >
-                {editingAgendaId !== null ? "Salvar alterações" : "Adicionar à agenda"}
-              </button>
-              {editingAgendaId !== null && (
-                <button
-                  onClick={cancelEditAgendaItem}
-                  style={{ width: "100%", padding: 9, borderRadius: 13, border: "none", background: "none", color: GREY, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12, cursor: "pointer", marginTop: 4 }}
-                >
-                  Cancelar edição
-                </button>
-              )}
+            <div style={{ marginBottom: 14 }}>
+              <Segmented value={agendaView} onChange={setAgendaView} options={["Mês", "Semana", "Lista"]} />
             </div>
 
-            {sortedAgenda.length === 0 ? (
-              <div style={{ fontSize: 12.5, color: GREY, textAlign: "center", padding: "20px 0" }}>
-                Nada agendado ainda.
-              </div>
-            ) : (
-              sortedAgenda.map((item) => {
-                const label = daysUntilLabel(item.data);
-                const late = label.startsWith("Atrasado");
-                const today_ = label === "Hoje";
-                return (
-                  <div key={item.id} style={{
-                    background: "#fff", borderRadius: 14, padding: "14px 16px", marginBottom: 8,
-                    border: `1px solid ${late ? "#E8B4A0" : "rgba(42,42,42,0.06)"}`,
-                    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10,
-                  }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: INK }}>{item.tipo}</div>
-                      <div style={{ fontSize: 11.5, color: GREY }}>
-                        {new Date(item.data + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
-                        {item.horario ? ` · ${item.horario}` : ""}
-                      </div>
-                      {item.obs && <div style={{ fontSize: 11, color: GREY, fontStyle: "italic", marginTop: 2 }}>{item.obs}</div>}
-                    </div>
-                    <div style={{
-                      fontSize: 10.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, flexShrink: 0,
-                      background: late ? "#FBE0DA" : today_ ? "#EAF4EE" : "rgba(42,42,42,0.05)",
-                      color: late ? TERRACOTTA : today_ ? TEAL : GREY,
-                    }}>
-                      {label}
-                    </div>
-                    <button
-                      onClick={() => startEditAgendaItem(item)}
-                      style={{ border: "none", background: "none", color: TEAL, fontSize: 11.5, fontWeight: 700, cursor: "pointer", flexShrink: 0, padding: 0 }}
-                    >
-                      editar
-                    </button>
-                    <button
-                      onClick={() => saveAgendaItems(agendaItems.filter((it) => it.id !== item.id))}
-                      style={{ border: "none", background: "none", color: GREY, fontSize: 16, cursor: "pointer", flexShrink: 0 }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                );
-              })
+            {agendaView === "Mês" && (
+              <MonthCalendar
+                monthKey={calendarMonth}
+                selected={selectedDay}
+                todayKey={today}
+                marksFor={marksForDay}
+                onSelect={(k) => { setSelectedDay(k); setWeekStart(startOfWeek(k)); setCalendarMonth(monthKeyOf(k)); }}
+                onMonthChange={(delta) => setCalendarMonth(addMonths(calendarMonth, delta))}
+              />
             )}
 
-            <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 12, letterSpacing: "0.04em", textTransform: "uppercase", color: TEAL, margin: "24px 0 10px" }}>Rotina recorrente</div>
-
-            {recorrentesHoje.length > 0 && (
-              <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 22, marginBottom: 14, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
-                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, marginBottom: 12 }}>💊 De hoje</div>
-                {recorrentesHoje.map((med) => {
-                  const done = !!recorrenteChecks[`${today}_${med.id}`];
-                  return (
-                    <div key={med.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", borderBottom: "1px solid rgba(42,42,42,0.06)" }}>
-                      <button
-                        onClick={() => toggleRecorrenteCheck(med.id)}
-                        style={{
-                          width: 24, height: 24, borderRadius: 7, flexShrink: 0, border: done ? "none" : "2px solid rgba(42,42,42,0.15)",
-                          background: done ? TEAL : "transparent", color: "#fff", fontWeight: 700, fontSize: 13,
-                          display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
-                        }}
-                      >
-                        {done ? "✓" : ""}
-                      </button>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: done ? GREY : INK, textDecoration: done ? "line-through" : "none" }}>{med.nome}</div>
-                      </div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: TERRACOTTA }}>{med.horario}</div>
-                    </div>
-                  );
-                })}
-              </div>
+            {agendaView === "Semana" && (
+              <WeekOverview
+                weekStartKey={weekStart}
+                todayKey={today}
+                recorrentes={recorrentes}
+                agendaItems={agendaItems}
+                checks={recorrenteChecks}
+                selected={selectedDay}
+                onToggleMed={(key, medId) => toggleRecorrenteCheck(medId, key)}
+                onWeekChange={(delta) => setWeekStart(addDays(weekStart, delta * 7))}
+                onSelectDay={(k) => { setSelectedDay(k); setCalendarMonth(monthKeyOf(k)); }}
+              />
             )}
 
-            <div ref={recorrenteFormRef} style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 24, marginBottom: 14, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
-              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{editingRecorrenteId !== null ? "Editar remédio" : "Novo remédio"}</div>
-              <div style={{ fontSize: 11.5, color: GREY, marginBottom: 14 }}>Datas e frequência conforme a orientação do seu veterinário.</div>
-
-              <label style={{ fontSize: 12, color: GREY }}>Nome</label>
-              <input
-                value={novoRecorrente.nome}
-                onChange={(e) => setNovoRecorrente({ ...novoRecorrente, nome: e.target.value })}
-                placeholder="Ex: Antibiótico"
-                style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 10px" }}
+            {agendaView !== "Lista" && (
+              <DayPanel
+                dayKey={selectedDay}
+                todayKey={today}
+                agendaItems={agendaItems}
+                recorrentes={recorrentes}
+                checks={recorrenteChecks}
+                onToggleMed={(key, medId) => toggleRecorrenteCheck(medId, key)}
+                onToggleCompromisso={toggleAgendaConcluido}
+                onEditCompromisso={startEditAgendaItem}
+                onEditMed={startEditRecorrente}
+                onAddCompromisso={openNovoCompromisso}
+                onAddMed={openNovoRemedio}
               />
+            )}
 
-              <label style={{ fontSize: 12, color: GREY }}>Horário</label>
-              <input
-                type="time"
-                value={novoRecorrente.horario}
-                onChange={(e) => setNovoRecorrente({ ...novoRecorrente, horario: e.target.value })}
-                style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 10px" }}
-              />
-
-              <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>Dias da semana</label>
-              <div style={{ display: "flex", gap: 4, marginBottom: 8, alignItems: "center" }}>
-                {["D", "S", "T", "Q", "Q", "S", "S"].map((letra, idx) => {
-                  const active = novoRecorrente.dias.includes(idx);
-                  return (
-                    <button
-                      key={idx}
-                      onClick={() => {
-                        const dias = active ? novoRecorrente.dias.filter((d) => d !== idx) : [...novoRecorrente.dias, idx];
-                        setNovoRecorrente({ ...novoRecorrente, dias });
-                      }}
-                      style={{
-                        width: 32, height: 32, borderRadius: "50%", border: "none", cursor: "pointer",
-                        background: active ? TEAL : "rgba(42,42,42,0.06)", color: active ? "#fff" : GREY,
-                        fontWeight: 700, fontSize: 12,
-                      }}
-                    >
-                      {letra}
-                    </button>
-                  );
-                })}
-              </div>
-              <button
-                onClick={() => {
-                  const allSelected = novoRecorrente.dias.length === 7;
-                  setNovoRecorrente({ ...novoRecorrente, dias: allSelected ? [] : [0, 1, 2, 3, 4, 5, 6] });
-                }}
-                style={{
-                  border: "none", background: "none", color: TEAL, fontSize: 11.5, fontWeight: 700,
-                  cursor: "pointer", padding: 0, marginBottom: 10, textDecoration: "underline",
-                }}
-              >
-                {novoRecorrente.dias.length === 7 ? "Desmarcar todos" : "Marcar todos os dias"}
-              </button>
-
-              <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>Duração</label>
-              <Segmented
-                value={novoRecorrente.duracao === "continuo" ? "Contínuo" : "Por tempo determinado"}
-                onChange={(v) => setNovoRecorrente({ ...novoRecorrente, duracao: v === "Contínuo" ? "continuo" : "determinado" })}
-                options={["Contínuo", "Por tempo determinado"]}
-              />
-
-              {novoRecorrente.duracao === "determinado" && (
-                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ fontSize: 11, color: GREY }}>Início</label>
-                    <input
-                      type="date"
-                      value={novoRecorrente.dataInicio}
-                      onChange={(e) => setNovoRecorrente({ ...novoRecorrente, dataInicio: e.target.value })}
-                      style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 12.5, marginTop: 4 }}
-                    />
+            {agendaView === "Lista" && (
+              <>
+                {agendaItems.length === 0 ? (
+                  <div style={{ fontSize: 12.5, color: GREY, textAlign: "center", padding: "20px 0" }}>
+                    Nada agendado ainda. Toque no + para incluir o primeiro compromisso.
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ fontSize: 11, color: GREY }}>Fim</label>
-                    <input
-                      type="date"
-                      value={novoRecorrente.dataFim}
-                      onChange={(e) => setNovoRecorrente({ ...novoRecorrente, dataFim: e.target.value })}
-                      style={{ width: "100%", padding: 8, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 12.5, marginTop: 4 }}
-                    />
-                  </div>
+                ) : (
+                  [
+                    ["Em atraso", agendaGroups.late],
+                    ["Hoje", agendaGroups.today],
+                    ["Próximos", agendaGroups.future],
+                    ["Já concluídos", agendaGroups.done],
+                  ].map(([titulo, itens]) => (
+                    itens.length === 0 ? null : (
+                      <div key={titulo} style={{ marginBottom: 16 }}>
+                        <div style={{
+                          fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 11, letterSpacing: "0.04em",
+                          textTransform: "uppercase", color: titulo === "Em atraso" ? TERRACOTTA : GREY, marginBottom: 8,
+                        }}>
+                          {titulo}
+                        </div>
+                        {itens.map((item) => {
+                          const jejum = jejumInfo(item);
+                          const exames = agendaExames(item);
+                          return (
+                            <div key={item.id} style={{
+                              background: "#fff", borderRadius: 14, padding: "13px 15px", marginBottom: 8,
+                              border: `1px solid ${agendaStatus(item, today) === "late" ? "#E8B4A0" : "rgba(42,42,42,0.06)"}`,
+                              display: "flex", alignItems: "flex-start", gap: 11,
+                            }}>
+                              <button
+                                onClick={() => toggleAgendaConcluido(item)}
+                                aria-label={item.concluido ? "Desmarcar compromisso" : "Marcar como feito"}
+                                style={{
+                                  width: 22, height: 22, borderRadius: 7, flexShrink: 0, marginTop: 1,
+                                  border: item.concluido ? "none" : "2px solid rgba(42,42,42,0.15)",
+                                  background: item.concluido ? TERRACOTTA : "transparent", color: "#fff",
+                                  fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+                                }}
+                              >
+                                {item.concluido ? "✓" : ""}
+                              </button>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 700, fontSize: 13, color: item.concluido ? GREY : INK, textDecoration: item.concluido ? "line-through" : "none" }}>
+                                  {agendaTitulo(item)}
+                                </div>
+                                <div style={{ fontSize: 11.5, color: GREY }}>
+                                  {new Date(item.data + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
+                                  {item.horario ? ` · ${item.horario}` : ""} · {daysUntilLabel(item.data)}
+                                </div>
+                                {exames.length > 1 && (
+                                  <div style={{ fontSize: 11, color: GREY, marginTop: 2 }}>{exames.length} exames: {exames.join(", ")}</div>
+                                )}
+                                {jejum && (
+                                  <div style={{ fontSize: 11, color: TERRACOTTA, fontWeight: 700, marginTop: 3 }}>{jejum.texto}</div>
+                                )}
+                                <div style={{ fontSize: 10.5, color: GREY, marginTop: 3 }}>
+                                  Avisa {lembretesLabel(item.lembretes)}
+                                </div>
+                                {item.obs && <div style={{ fontSize: 11, color: GREY, fontStyle: "italic", marginTop: 3 }}>{item.obs}</div>}
+                              </div>
+                              <button
+                                onClick={() => startEditAgendaItem(item)}
+                                style={{ border: "none", background: "none", color: TEAL, fontSize: 11.5, fontWeight: 700, cursor: "pointer", flexShrink: 0, padding: 0 }}
+                              >
+                                editar
+                              </button>
+                              <button
+                                onClick={() => saveAgendaItems(agendaItems.filter((it) => it.id !== item.id))}
+                                aria-label="Apagar compromisso"
+                                style={{ border: "none", background: "none", color: GREY, fontSize: 16, cursor: "pointer", flexShrink: 0, lineHeight: 1 }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )
+                  ))
+                )}
+
+                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase", color: TEAL, margin: "20px 0 8px" }}>
+                  Remédios cadastrados
                 </div>
-              )}
-
-              <button
-                onClick={() => {
-                  if (!novoRecorrente.nome || novoRecorrente.dias.length === 0) return;
-                  if (editingRecorrenteId !== null) {
-                    saveRecorrentes(recorrentes.map((m) => (m.id === editingRecorrenteId ? { ...novoRecorrente, id: editingRecorrenteId } : m)));
-                    setEditingRecorrenteId(null);
-                    setMedSavedMsg(`✓ ${novoRecorrente.nome} atualizado`);
-                  } else {
-                    track("add_recurring_med");
-                    saveRecorrentes([...recorrentes, { ...novoRecorrente, id: Date.now() }]);
-                    setMedSavedMsg(`✓ ${novoRecorrente.nome} incluído na agenda`);
-                  }
-                  setTimeout(() => setMedSavedMsg(""), 2800);
-                  setNovoRecorrente({ nome: "", horario: "", dias: [0, 1, 2, 3, 4, 5, 6], duracao: "continuo", dataInicio: todayKey(), dataFim: "" });
-                }}
-                style={{ width: "100%", padding: 11, borderRadius: 13, border: "none", background: TEAL, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 14 }}
-              >
-                {editingRecorrenteId !== null ? "Salvar alterações" : "Salvar remédio"}
-              </button>
-              {editingRecorrenteId !== null && (
-                <button
-                  onClick={cancelEditRecorrente}
-                  style={{ width: "100%", padding: 9, borderRadius: 13, border: "none", background: "none", color: GREY, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12, cursor: "pointer", marginTop: 4 }}
-                >
-                  Cancelar edição
-                </button>
-              )}
-
-              {medSavedMsg && (
-                <div style={{
-                  marginTop: 10, padding: "9px 14px", borderRadius: 10, background: "rgba(59,110,100,0.14)",
-                  color: TEAL, fontSize: 12.5, fontWeight: 700, textAlign: "center",
-                }}>
-                  {medSavedMsg}
-                </div>
-              )}
-            </div>
-
-            {recorrentes.length > 0 && (
-              <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 20, marginBottom: 14, boxShadow: "0 20px 40px rgba(0,0,0,0.04)", overflowX: "auto" }}>
-                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 12 }}>Visão da semana</div>
-                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 320 }}>
-                  <thead>
-                    <tr>
-                      <th style={{ textAlign: "left", fontSize: 10.5, color: GREY, fontWeight: 700, paddingBottom: 8 }}></th>
-                      {["D", "S", "T", "Q", "Q", "S", "S"].map((letra, idx) => (
-                        <th key={idx} style={{ fontSize: 10.5, color: GREY, fontWeight: 700, paddingBottom: 8, width: 26 }}>{letra}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recorrentes.map((med) => (
-                      <tr key={med.id}>
-                        <td style={{ fontSize: 11.5, fontWeight: 700, color: INK, paddingRight: 8, paddingTop: 6, paddingBottom: 6, whiteSpace: "nowrap" }}>{med.nome}</td>
-                        {[0, 1, 2, 3, 4, 5, 6].map((idx) => (
-                          <td key={idx} style={{ textAlign: "center", paddingTop: 6, paddingBottom: 6 }}>
-                            {med.dias.includes(idx) ? (
-                              <div style={{ width: 8, height: 8, borderRadius: "50%", background: TEAL, margin: "0 auto" }} />
-                            ) : (
-                              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(42,42,42,0.08)", margin: "0 auto" }} />
-                            )}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {recorrentes.length > 0 && (
-              <div>
-                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, marginBottom: 8, color: GREY }}>Todos os remédios cadastrados</div>
-                {recorrentes.map((med) => (
-                  <div key={med.id} style={{ background: "#fff", borderRadius: 12, padding: "10px 14px", marginBottom: 6, border: "1px solid rgba(42,42,42,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 12.5 }}>{med.nome}</div>
-                      <div style={{ fontSize: 11, color: GREY }}>
-                        {med.horario} · {med.duracao === "continuo" ? "contínuo" : `até ${med.dataFim ? new Date(med.dataFim + "T12:00:00").toLocaleDateString("pt-BR") : "—"}`}
+                {recorrentes.length === 0 ? (
+                  <div style={{ fontSize: 12.5, color: GREY, textAlign: "center", padding: "12px 0" }}>
+                    Nenhum remédio cadastrado ainda.
+                  </div>
+                ) : (
+                  recorrentes.map((med) => (
+                    <div key={med.id} style={{ background: "#fff", borderRadius: 12, padding: "11px 14px", marginBottom: 6, border: "1px solid rgba(42,42,42,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12.5 }}>{med.nome}</div>
+                        <div style={{ fontSize: 11, color: GREY }}>
+                          {medHorarios(med).join(" · ") || "sem horário"} · {medFrequenciaLabel(med)}
+                          {med.duracao === "determinado" && med.dataFim
+                            ? ` · até ${new Date(med.dataFim + "T12:00:00").toLocaleDateString("pt-BR")}`
+                            : ""}
+                        </div>
+                        {med.jejum && (
+                          <div style={{ fontSize: 10.5, color: TERRACOTTA, fontWeight: 700, marginTop: 2 }}>
+                            jejum de {formatDuration(med.jejumMinutos)} antes
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                        <button
+                          onClick={() => startEditRecorrente(med)}
+                          style={{ border: "none", background: "none", color: TEAL, fontSize: 11.5, fontWeight: 700, cursor: "pointer", padding: 0 }}
+                        >
+                          editar
+                        </button>
+                        <button
+                          onClick={() => saveRecorrentes(recorrentes.filter((m) => m.id !== med.id))}
+                          aria-label="Apagar remédio"
+                          style={{ border: "none", background: "none", color: GREY, fontSize: 16, cursor: "pointer", lineHeight: 1 }}
+                        >
+                          ×
+                        </button>
                       </div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <button
-                        onClick={() => startEditRecorrente(med)}
-                        style={{ border: "none", background: "none", color: TEAL, fontSize: 11.5, fontWeight: 700, cursor: "pointer", padding: 0 }}
-                      >
-                        editar
-                      </button>
-                      <button
-                        onClick={() => saveRecorrentes(recorrentes.filter((m) => m.id !== med.id))}
-                        style={{ border: "none", background: "none", color: GREY, fontSize: 16, cursor: "pointer" }}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                )}
+              </>
+            )}
+
+            {medSavedMsg && (
+              <div style={{
+                marginTop: 10, padding: "9px 14px", borderRadius: 10, background: "rgba(59,110,100,0.14)",
+                color: TEAL, fontSize: 12.5, fontWeight: 700, textAlign: "center",
+              }}>
+                {medSavedMsg}
               </div>
             )}
           </div>
@@ -2145,6 +2216,24 @@ export default function App() {
         </div>
       </div>
 
+      {/* Cadastro rápido — discreto, só aparece na agenda */}
+      {tab === "agenda" && !sheet && (
+        <button
+          onClick={() => setSheet("menu")}
+          aria-label="Adicionar à agenda"
+          style={{
+            position: "fixed", right: 22, zIndex: 41,
+            bottom: "calc(env(safe-area-inset-bottom, 0px) + 88px)",
+            width: 50, height: 50, borderRadius: "50%", border: "none",
+            background: TERRACOTTA, color: "#fff", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 10px 24px rgba(196,98,45,0.38)",
+          }}
+        >
+          <Plus size={24} strokeWidth={2.4} />
+        </button>
+      )}
+
       {/* Bottom Navigation */}
       <div style={{
         position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 40,
@@ -2184,6 +2273,391 @@ export default function App() {
         </div>
       </div>
 
+      {sheet === "menu" && (
+        <Sheet title="O que você quer incluir?" onClose={() => setSheet(null)}>
+          <button
+            onClick={() => openNovoCompromisso(selectedDay)}
+            style={{ width: "100%", textAlign: "left", padding: "15px 16px", borderRadius: 15, border: "1px solid rgba(196,98,45,0.25)", background: "#fff", cursor: "pointer", marginBottom: 10 }}
+          >
+            <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, color: TERRACOTTA }}>Compromisso ou exame</div>
+            <div style={{ fontSize: 11.5, color: GREY, marginTop: 2 }}>Consulta, coleta, ultrassom — com jejum e mais de um exame no mesmo dia, se precisar.</div>
+          </button>
+          <button
+            onClick={() => openNovoRemedio(selectedDay)}
+            style={{ width: "100%", textAlign: "left", padding: "15px 16px", borderRadius: 15, border: "1px solid rgba(59,110,100,0.25)", background: "#fff", cursor: "pointer" }}
+          >
+            <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, color: TEAL }}>Remédio da rotina</div>
+            <div style={{ fontSize: 11.5, color: GREY, marginTop: 2 }}>A cada 24h, a cada 48h ou em dias específicos.</div>
+          </button>
+        </Sheet>
+      )}
+
+      {sheet === "notif" && (
+        <Sheet
+          title="Avisos dos compromissos"
+          subtitle="Isso vale para os próximos compromissos que você criar. Cada compromisso já cadastrado guarda o ajuste dele."
+          onClose={() => setSheet(null)}
+        >
+          <div style={{ background: "#fff", borderRadius: 16, padding: 18 }}>
+            <LembretesPicker value={notifPrefs} onChange={saveNotifPrefs} />
+          </div>
+          <button
+            onClick={() => setSheet(null)}
+            style={{ width: "100%", padding: 12, borderRadius: 14, border: "none", background: TEAL, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 14 }}
+          >
+            Pronto
+          </button>
+        </Sheet>
+      )}
+
+      {sheet === "compromisso" && (
+        <Sheet
+          title={editingAgendaId !== null ? "Editar compromisso" : "Novo compromisso"}
+          subtitle="De acordo com a orientação do seu veterinário — o app só ajuda a lembrar."
+          onClose={cancelEditAgendaItem}
+        >
+          <div style={{ background: "#fff", borderRadius: 16, padding: 18, marginBottom: 12 }}>
+            <label style={{ fontSize: 12, color: GREY }}>Tipo</label>
+            <input
+              value={novoAgendaItem.tipo}
+              onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, tipo: e.target.value })}
+              placeholder="Ex: Consulta de retorno, Coleta de exames..."
+              style={{ width: "100%", padding: 9, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 8px", background: "#fff", boxSizing: "border-box" }}
+            />
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+              {["Consulta", "Coleta de exames", "Ultrassom", "Fluidoterapia", "Limpeza do dispositivo", "Outro"].map((tipo) => (
+                <ChipToggle key={tipo} active={novoAgendaItem.tipo === tipo} onClick={() => setNovoAgendaItem({ ...novoAgendaItem, tipo })}>
+                  {tipo}
+                </ChipToggle>
+              ))}
+            </div>
+
+            <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>Exames desse dia</label>
+            <div style={{ fontSize: 10.5, color: GREY, marginBottom: 8 }}>
+              Dá para marcar quantos precisar para a mesma data — é comum sair mais de um na mesma coleta.
+            </div>
+            {novoAgendaItem.exames.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                {novoAgendaItem.exames.map((ex, i) => (
+                  <span key={`${ex}-${i}`} style={{
+                    display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 8px 5px 11px",
+                    borderRadius: 999, background: "rgba(196,98,45,0.14)", color: TERRACOTTA, fontSize: 11.5, fontWeight: 700,
+                  }}>
+                    {ex}
+                    <button
+                      onClick={() => setNovoAgendaItem({ ...novoAgendaItem, exames: novoAgendaItem.exames.filter((_, j) => j !== i) })}
+                      aria-label={`Remover ${ex}`}
+                      style={{ border: "none", background: "none", color: TERRACOTTA, cursor: "pointer", padding: 0, display: "flex" }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+              {["Hemograma", "Creatinina", "Ureia", "SDMA", "Urina tipo I", "Fósforo", "Pressão arterial"]
+                .filter((ex) => !novoAgendaItem.exames.includes(ex))
+                .map((ex) => (
+                  <ChipToggle key={ex} active={false} onClick={() => setNovoAgendaItem({ ...novoAgendaItem, exames: [...novoAgendaItem.exames, ex] })}>
+                    + {ex}
+                  </ChipToggle>
+                ))}
+            </div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+              <input
+                value={novoExameNome}
+                onChange={(e) => setNovoExameNome(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" || !novoExameNome.trim()) return;
+                  e.preventDefault();
+                  setNovoAgendaItem({ ...novoAgendaItem, exames: [...novoAgendaItem.exames, novoExameNome.trim()] });
+                  setNovoExameNome("");
+                }}
+                placeholder="Outro exame..."
+                style={{ flex: 1, padding: 9, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, boxSizing: "border-box", minWidth: 0 }}
+              />
+              <button
+                onClick={() => {
+                  if (!novoExameNome.trim()) return;
+                  setNovoAgendaItem({ ...novoAgendaItem, exames: [...novoAgendaItem.exames, novoExameNome.trim()] });
+                  setNovoExameNome("");
+                }}
+                style={{ border: "none", background: "rgba(196,98,45,0.14)", color: TERRACOTTA, borderRadius: 12, padding: "0 14px", fontWeight: 700, fontSize: 12, cursor: "pointer", flexShrink: 0 }}
+              >
+                Incluir
+              </button>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <label style={{ fontSize: 12, color: GREY }}>Data</label>
+                <input
+                  type="date"
+                  value={novoAgendaItem.data}
+                  onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, data: e.target.value })}
+                  style={{ width: "100%", padding: 9, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, marginTop: 4, background: "#fff", boxSizing: "border-box" }}
+                />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <label style={{ fontSize: 12, color: GREY }}>Horário</label>
+                <input
+                  type="time"
+                  value={novoAgendaItem.horario}
+                  onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, horario: e.target.value })}
+                  style={{ width: "100%", padding: 9, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, marginTop: 4, background: "#fff", boxSizing: "border-box" }}
+                />
+              </div>
+            </div>
+
+            <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>Precisa de jejum?</label>
+            <Segmented
+              value={novoAgendaItem.jejum ? "Sim" : "Não"}
+              onChange={(v) => setNovoAgendaItem({ ...novoAgendaItem, jejum: v === "Sim" })}
+              options={["Não", "Sim"]}
+            />
+            {novoAgendaItem.jejum && (
+              <div style={{ marginTop: 10 }}>
+                <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>Quantas horas de jejum?</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {JEJUM_HORAS_OPCOES.map((h) => (
+                    <ChipToggle key={h} active={Number(novoAgendaItem.jejumHoras) === h} onClick={() => setNovoAgendaItem({ ...novoAgendaItem, jejumHoras: h })}>
+                      {h}h
+                    </ChipToggle>
+                  ))}
+                </div>
+                {jejumInfo(novoAgendaItem) && jejumInfo(novoAgendaItem).inicio && (
+                  <div style={{ fontSize: 11, color: TERRACOTTA, fontWeight: 700, marginTop: 8 }}>
+                    {jejumInfo(novoAgendaItem).texto}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <label style={{ fontSize: 12, color: GREY, display: "block", margin: "16px 0 4px" }}>Observações</label>
+            <textarea
+              value={novoAgendaItem.obs}
+              onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, obs: e.target.value })}
+              placeholder="Alguma nota extra sobre esse compromisso..."
+              style={{ width: "100%", minHeight: 50, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", padding: 9, fontSize: 13, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }}
+            />
+          </div>
+
+          <div style={{ background: "#fff", borderRadius: 16, padding: 18, marginBottom: 14 }}>
+            <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+              <Bell size={14} color={TEAL} /> Quando avisar
+            </div>
+            <LembretesPicker
+              value={novoAgendaItem.lembretes}
+              onChange={(lembretes) => setNovoAgendaItem({ ...novoAgendaItem, lembretes })}
+            />
+          </div>
+
+          <button
+            onClick={saveCompromissoFromForm}
+            style={{ width: "100%", padding: 13, borderRadius: 14, border: "none", background: TERRACOTTA, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}
+          >
+            {editingAgendaId !== null ? "Salvar alterações" : "Adicionar à agenda"}
+          </button>
+          {editingAgendaId !== null && (
+            <button
+              onClick={() => {
+                saveAgendaItems(agendaItems.filter((it) => it.id !== editingAgendaId));
+                cancelEditAgendaItem();
+              }}
+              style={{ width: "100%", padding: 11, borderRadius: 14, border: "none", background: "none", color: GREY, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, cursor: "pointer", marginTop: 4 }}
+            >
+              Apagar compromisso
+            </button>
+          )}
+        </Sheet>
+      )}
+
+      {sheet === "remedio" && (
+        <Sheet
+          title={editingRecorrenteId !== null ? "Editar remédio" : "Novo remédio"}
+          subtitle="Datas e frequência conforme a orientação do seu veterinário."
+          onClose={cancelEditRecorrente}
+        >
+          <div style={{ background: "#fff", borderRadius: 16, padding: 18, marginBottom: 14 }}>
+            <label style={{ fontSize: 12, color: GREY }}>Nome</label>
+            <input
+              value={novoRecorrente.nome}
+              onChange={(e) => setNovoRecorrente({ ...novoRecorrente, nome: e.target.value })}
+              placeholder="Ex: Antibiótico"
+              style={{ width: "100%", padding: 9, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 14px", boxSizing: "border-box" }}
+            />
+
+            <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>De quanto em quanto tempo?</label>
+            <Segmented
+              value={FREQ_LABEL[novoRecorrente.frequencia] || FREQ_LABEL["24h"]}
+              onChange={(v) => setNovoRecorrente({ ...novoRecorrente, frequencia: FREQ_VALUE[v] })}
+              options={["24h", "48h", "Dias fixos"]}
+            />
+            <div style={{ fontSize: 10.5, color: GREY, margin: "8px 0 14px" }}>
+              {novoRecorrente.frequencia === "24h" && "Todo dia, no mesmo horário."}
+              {novoRecorrente.frequencia === "48h" && "Dia sim, dia não, contando a partir da data de início."}
+              {novoRecorrente.frequencia === "dias" && "Você escolhe os dias da semana."}
+            </div>
+
+            <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>
+              {novoRecorrente.horarios.length > 1 ? "Horários" : "Horário"}
+            </label>
+            {novoRecorrente.horarios.map((h, i) => (
+              <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "center" }}>
+                <input
+                  type="time"
+                  value={h}
+                  onChange={(e) => {
+                    const horarios = [...novoRecorrente.horarios];
+                    horarios[i] = e.target.value;
+                    setNovoRecorrente({ ...novoRecorrente, horarios });
+                  }}
+                  style={{ flex: 1, padding: 9, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, boxSizing: "border-box", minWidth: 0 }}
+                />
+                {novoRecorrente.horarios.length > 1 && (
+                  <button
+                    onClick={() => setNovoRecorrente({ ...novoRecorrente, horarios: novoRecorrente.horarios.filter((_, j) => j !== i) })}
+                    aria-label="Remover horário"
+                    style={{ border: "none", background: "none", color: GREY, cursor: "pointer", padding: 6, display: "flex", flexShrink: 0 }}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "8px 0 8px" }}>
+              {HORARIOS_SUGERIDOS.filter((h) => !novoRecorrente.horarios.includes(h)).map((h) => (
+                <ChipToggle
+                  key={h}
+                  active={false}
+                  color={TEAL}
+                  onClick={() => {
+                    const vazio = novoRecorrente.horarios.findIndex((x) => !x);
+                    const horarios = [...novoRecorrente.horarios];
+                    if (vazio >= 0) horarios[vazio] = h;
+                    else horarios.push(h);
+                    setNovoRecorrente({ ...novoRecorrente, horarios });
+                  }}
+                >
+                  {h}
+                </ChipToggle>
+              ))}
+            </div>
+            <button
+              onClick={() => setNovoRecorrente({ ...novoRecorrente, horarios: [...novoRecorrente.horarios, ""] })}
+              style={{ border: "none", background: "none", color: TEAL, fontSize: 11.5, fontWeight: 700, cursor: "pointer", padding: 0, marginBottom: 14, textDecoration: "underline" }}
+            >
+              + outro horário no mesmo dia
+            </button>
+
+            {novoRecorrente.frequencia === "dias" && (
+              <>
+                <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>Dias da semana</label>
+                <div style={{ display: "flex", gap: 4, marginBottom: 8, alignItems: "center" }}>
+                  {["D", "S", "T", "Q", "Q", "S", "S"].map((letra, idx) => {
+                    const active = novoRecorrente.dias.includes(idx);
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          const dias = active ? novoRecorrente.dias.filter((d) => d !== idx) : [...novoRecorrente.dias, idx];
+                          setNovoRecorrente({ ...novoRecorrente, dias });
+                        }}
+                        style={{
+                          width: 32, height: 32, borderRadius: "50%", border: "none", cursor: "pointer",
+                          background: active ? TEAL : "rgba(42,42,42,0.06)", color: active ? "#fff" : GREY,
+                          fontWeight: 700, fontSize: 12,
+                        }}
+                      >
+                        {letra}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={() => {
+                    const allSelected = novoRecorrente.dias.length === 7;
+                    setNovoRecorrente({ ...novoRecorrente, dias: allSelected ? [] : [0, 1, 2, 3, 4, 5, 6] });
+                  }}
+                  style={{ border: "none", background: "none", color: TEAL, fontSize: 11.5, fontWeight: 700, cursor: "pointer", padding: 0, marginBottom: 14, textDecoration: "underline" }}
+                >
+                  {novoRecorrente.dias.length === 7 ? "Desmarcar todos" : "Marcar todos os dias"}
+                </button>
+              </>
+            )}
+
+            <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>Precisa de jejum?</label>
+            <Segmented
+              value={novoRecorrente.jejum ? "Sim" : "Não"}
+              onChange={(v) => setNovoRecorrente({ ...novoRecorrente, jejum: v === "Sim" })}
+              options={["Não", "Sim"]}
+            />
+            {novoRecorrente.jejum && (
+              <div style={{ marginTop: 10 }}>
+                <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>Quanto tempo sem comer antes da dose?</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {JEJUM_MINUTOS_MED_OPCOES.map((m) => (
+                    <ChipToggle key={m} active={Number(novoRecorrente.jejumMinutos) === m} onClick={() => setNovoRecorrente({ ...novoRecorrente, jejumMinutos: m })} color={TEAL}>
+                      {formatDuration(m)}
+                    </ChipToggle>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <label style={{ fontSize: 12, color: GREY, display: "block", margin: "16px 0 6px" }}>Duração</label>
+            <Segmented
+              value={novoRecorrente.duracao === "continuo" ? "Contínuo" : "Por tempo determinado"}
+              onChange={(v) => setNovoRecorrente({ ...novoRecorrente, duracao: v === "Contínuo" ? "continuo" : "determinado" })}
+              options={["Contínuo", "Por tempo determinado"]}
+            />
+
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <label style={{ fontSize: 11, color: GREY }}>
+                  {novoRecorrente.frequencia === "48h" ? "Primeira dose" : "Início"}
+                </label>
+                <input
+                  type="date"
+                  value={novoRecorrente.dataInicio}
+                  onChange={(e) => setNovoRecorrente({ ...novoRecorrente, dataInicio: e.target.value })}
+                  style={{ width: "100%", padding: 9, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 12.5, marginTop: 4, boxSizing: "border-box" }}
+                />
+              </div>
+              {novoRecorrente.duracao === "determinado" && (
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <label style={{ fontSize: 11, color: GREY }}>Fim</label>
+                  <input
+                    type="date"
+                    value={novoRecorrente.dataFim}
+                    onChange={(e) => setNovoRecorrente({ ...novoRecorrente, dataFim: e.target.value })}
+                    style={{ width: "100%", padding: 9, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 12.5, marginTop: 4, boxSizing: "border-box" }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <button
+            onClick={saveRemedioFromForm}
+            style={{ width: "100%", padding: 13, borderRadius: 14, border: "none", background: TEAL, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}
+          >
+            {editingRecorrenteId !== null ? "Salvar alterações" : "Salvar remédio"}
+          </button>
+          {editingRecorrenteId !== null && (
+            <button
+              onClick={() => {
+                saveRecorrentes(recorrentes.filter((m) => m.id !== editingRecorrenteId));
+                cancelEditRecorrente();
+              }}
+              style={{ width: "100%", padding: 11, borderRadius: 14, border: "none", background: "none", color: GREY, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, cursor: "pointer", marginTop: 4 }}
+            >
+              Apagar remédio
+            </button>
+          )}
+        </Sheet>
+      )}
       {showOnboarding && onboardingStep === 0 && (
         <div style={{ position: "fixed", inset: 0, background: CREAM, zIndex: 50 }}>
           <div style={{
