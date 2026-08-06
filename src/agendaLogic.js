@@ -149,6 +149,11 @@ export function medStatus(med, key, checks, todayKey) {
   return "future";
 }
 
+export function doseLabel(med) {
+  if (!med || !med.dose) return "";
+  return `${String(med.dose).trim()} ${med.doseUnidade || "mg"}`;
+}
+
 export function medFrequenciaLabel(med) {
   const freq = medFrequencia(med);
   if (freq === "24h") return "a cada 24h";
@@ -160,17 +165,25 @@ export function medFrequenciaLabel(med) {
 
 // ---- compromissos ------------------------------------------------------
 
-// O tipo continua sendo o rótulo principal; `exames` guarda a lista de exames
-// marcados para o mesmo dia, que é o caso mais comum de coleta.
+// Duas granularidades diferentes: `tipos` são os procedimentos do dia
+// (ultrassom, coleta de sangue) e `exames` são os itens do painel pedido
+// pelo veterinário (creatinina, ureia). Cadastros antigos só têm `tipo`.
 export function agendaExames(item) {
   if (!item) return [];
   if (Array.isArray(item.exames)) return item.exames.filter(Boolean);
   return [];
 }
 
+export function agendaTipos(item) {
+  if (!item) return [];
+  if (Array.isArray(item.tipos) && item.tipos.length) return item.tipos.filter(Boolean);
+  return item.tipo ? [item.tipo] : [];
+}
+
 export function agendaTitulo(item) {
+  const tipos = agendaTipos(item);
+  if (tipos.length) return tipos.join(" + ");
   const exames = agendaExames(item);
-  if (item.tipo) return item.tipo;
   if (exames.length) return exames[0];
   return "Compromisso";
 }

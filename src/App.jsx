@@ -15,7 +15,7 @@ import { MonthCalendar, WeekOverview, DayPanel, TodaySummary } from "./AgendaCal
 import {
   dateKeyFromDate, addDays, addMonths, startOfWeek, monthKeyOf, medOccursOn, medStatus,
   medHorarios, medFrequencia, medFrequenciaLabel, medCheckKey, agendaStatus, agendaTitulo,
-  agendaExames, jejumInfo, daysUntilLabel as agendaDaysUntilLabel, normalizeLembretes,
+  agendaExames, agendaTipos, doseLabel, jejumInfo, daysUntilLabel as agendaDaysUntilLabel, normalizeLembretes,
   lembretesLabel, formatDuration, WEEKDAY_SHORT,
   DEFAULT_LEMBRETES, DIAS_ANTES_OPCOES, MINUTOS_ANTES_OPCOES,
   JEJUM_HORAS_OPCOES, JEJUM_MINUTOS_MED_OPCOES,
@@ -28,17 +28,19 @@ function todayKey() {
 }
 
 const EMPTY_AGENDA_ITEM = {
-  tipo: "", exames: [], data: "", horario: "", obs: "",
+  tipos: [], exames: [], data: "", horario: "", obs: "",
   jejum: false, jejumHoras: 8, lembretes: DEFAULT_LEMBRETES, concluido: false,
 };
 
 const EMPTY_RECORRENTE = {
-  nome: "", horarios: [""], frequencia: "24h", dias: [0, 1, 2, 3, 4, 5, 6],
-  duracao: "continuo", dataInicio: todayKey(), dataFim: "",
+  nome: "", dose: "", doseUnidade: "mg", horarios: [""], frequencia: "24h",
+  dias: [0, 1, 2, 3, 4, 5, 6], duracao: "continuo", dataInicio: todayKey(), dataFim: "",
   jejum: false, jejumMinutos: 60,
 };
 
 const HORARIOS_SUGERIDOS = ["07:00", "08:00", "12:00", "18:00", "20:00", "22:00"];
+const TIPOS_SUGERIDOS = ["Consulta", "Exame de sangue", "Exame de urina", "Ultrassom", "Fluidoterapia"];
+const DOSE_UNIDADES = ["mg", "ml"];
 
 const FREQ_LABEL = { "24h": "24h", "48h": "48h", dias: "Dias fixos" };
 const FREQ_VALUE = { "24h": "24h", "48h": "48h", "Dias fixos": "dias" };
@@ -55,7 +57,9 @@ function resumoCompromisso(item) {
 
 function resumoRemedio(med) {
   const horarios = med.horarios.filter(Boolean);
-  const partes = [horarios.length ? horarios.join(" · ") : "sem horário"];
+  const partes = [];
+  if (doseLabel(med)) partes.push(doseLabel(med));
+  partes.push(horarios.length ? horarios.join(" · ") : "sem horário");
   if (med.frequencia === "dias") {
     partes.push(med.dias.length === 7
       ? "todos os dias"
@@ -489,6 +493,7 @@ export default function App() {
   const [detalhesAbertos, setDetalhesAbertos] = useState(false);
   const [notifPrefs, setNotifPrefs] = useState(DEFAULT_LEMBRETES);
   const [novoExameNome, setNovoExameNome] = useState("");
+  const [novoTipoNome, setNovoTipoNome] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
   const [medSavedMsg, setMedSavedMsg] = useState("");
   const [showDiarioIntro, setShowDiarioIntro] = useState(false);
@@ -831,6 +836,7 @@ export default function App() {
   function openNovoCompromisso(dataKey) {
     setEditingAgendaId(null);
     setNovoExameNome("");
+    setNovoTipoNome("");
     setNovoAgendaItem({ ...EMPTY_AGENDA_ITEM, data: dataKey || selectedDay, lembretes: notifPrefs });
     setSheet("compromisso");
   }
@@ -838,8 +844,9 @@ export default function App() {
   function startEditAgendaItem(item) {
     setEditingAgendaId(item.id);
     setNovoExameNome("");
+    setNovoTipoNome("");
     setNovoAgendaItem({
-      tipo: item.tipo || "",
+      tipos: agendaTipos(item),
       exames: agendaExames(item),
       data: item.data || "",
       horario: item.horario || "",
@@ -856,8 +863,16 @@ export default function App() {
     setEditingAgendaId(null);
     setNovoAgendaItem(EMPTY_AGENDA_ITEM);
     setNovoExameNome("");
+    setNovoTipoNome("");
     setDetalhesAbertos(false);
     setSheet(null);
+  }
+
+  function adicionarTipo() {
+    const nome = novoTipoNome.trim();
+    if (!nome || novoAgendaItem.tipos.includes(nome)) return setNovoTipoNome("");
+    setNovoAgendaItem({ ...novoAgendaItem, tipos: [...novoAgendaItem.tipos, nome] });
+    setNovoTipoNome("");
   }
 
   function openNovoRemedio(dataKey) {
@@ -870,6 +885,8 @@ export default function App() {
     setEditingRecorrenteId(med.id);
     setNovoRecorrente({
       nome: med.nome || "",
+      dose: med.dose || "",
+      doseUnidade: med.doseUnidade || "mg",
       horarios: medHorarios(med).length ? medHorarios(med) : [""],
       frequencia: medFrequencia(med),
       dias: med.dias || [0, 1, 2, 3, 4, 5, 6],
@@ -905,8 +922,11 @@ export default function App() {
 
   function saveCompromissoFromForm() {
     const item = { ...novoAgendaItem, lembretes: normalizeLembretes(novoAgendaItem.lembretes) };
-    if (!item.data || (!item.tipo && item.exames.length === 0)) return;
-    if (!item.tipo) item.tipo = item.exames.length > 1 ? "Exames" : item.exames[0];
+    if (!item.data || (item.tipos.length === 0 && item.exames.length === 0)) return;
+    if (item.tipos.length === 0) item.tipos = [item.exames.length > 1 ? "Exames" : item.exames[0]];
+    // `tipo` continua gravado como texto único: é o que o envio de notificação
+    // lê e o que os cadastros anteriores a esta versão esperam encontrar.
+    item.tipo = item.tipos.join(" + ");
     if (editingAgendaId !== null) {
       saveAgendaItems(agendaItems.map((it) => (it.id === editingAgendaId ? { ...item, id: editingAgendaId } : it)));
     } else {
@@ -1912,7 +1932,7 @@ export default function App() {
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontWeight: 700, fontSize: 12.5 }}>{med.nome}</div>
                         <div style={{ fontSize: 11, color: GREY }}>
-                          {medHorarios(med).join(" · ") || "sem horário"} · {medFrequenciaLabel(med)}
+                          {doseLabel(med) ? `${doseLabel(med)} · ` : ""}{medHorarios(med).join(" · ") || "sem horário"} · {medFrequenciaLabel(med)}
                           {med.duracao === "determinado" && med.dataFim
                             ? ` · até ${new Date(med.dataFim + "T12:00:00").toLocaleDateString("pt-BR")}`
                             : ""}
@@ -2538,19 +2558,47 @@ export default function App() {
           onClose={cancelEditAgendaItem}
         >
           <div style={{ background: "#fff", borderRadius: 16, padding: 18, marginBottom: 12 }}>
-            <label style={{ fontSize: 12, color: GREY }}>O que é?</label>
-            <input
-              value={novoAgendaItem.tipo}
-              onChange={(e) => setNovoAgendaItem({ ...novoAgendaItem, tipo: e.target.value })}
-              placeholder="Ex: Consulta de retorno"
-              style={{ width: "100%", padding: 9, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, margin: "4px 0 8px", background: "#fff", boxSizing: "border-box" }}
-            />
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
-              {["Consulta", "Coleta de exames", "Ultrassom", "Fluidoterapia"].map((tipo) => (
-                <ChipToggle key={tipo} active={novoAgendaItem.tipo === tipo} onClick={() => setNovoAgendaItem({ ...novoAgendaItem, tipo })}>
-                  {tipo}
-                </ChipToggle>
-              ))}
+            <label style={{ fontSize: 12, color: GREY, display: "block" }}>O que é?</label>
+            <div style={{ fontSize: 10.5, color: GREY, margin: "3px 0 8px" }}>
+              Dá para marcar mais de um — no mesmo dia costuma sair ultrassom e coleta de sangue juntos.
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+              {[...new Set([...TIPOS_SUGERIDOS, ...novoAgendaItem.tipos])].map((tipo) => {
+                const ativo = novoAgendaItem.tipos.includes(tipo);
+                return (
+                  <ChipToggle
+                    key={tipo}
+                    active={ativo}
+                    onClick={() => setNovoAgendaItem({
+                      ...novoAgendaItem,
+                      tipos: ativo
+                        ? novoAgendaItem.tipos.filter((t) => t !== tipo)
+                        : [...novoAgendaItem.tipos, tipo],
+                    })}
+                  >
+                    {tipo}
+                  </ChipToggle>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+              <input
+                value={novoTipoNome}
+                onChange={(e) => setNovoTipoNome(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" || !novoTipoNome.trim()) return;
+                  e.preventDefault();
+                  adicionarTipo();
+                }}
+                placeholder="Outro tipo..."
+                style={{ flex: 1, padding: 9, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, boxSizing: "border-box", minWidth: 0 }}
+              />
+              <button
+                onClick={adicionarTipo}
+                style={{ border: "none", background: "rgba(196,98,45,0.14)", color: TERRACOTTA, borderRadius: 12, padding: "0 14px", fontWeight: 700, fontSize: 12, cursor: "pointer", flexShrink: 0 }}
+              >
+                Incluir
+              </button>
             </div>
 
             <label style={{ fontSize: 12, color: GREY }}>Data</label>
@@ -2587,7 +2635,7 @@ export default function App() {
       {sheet === "compromisso" && detalhesAbertos && (
         <Sheet
           title="Detalhes do compromisso"
-          subtitle={novoAgendaItem.tipo || "Compromisso sem nome ainda"}
+          subtitle={novoAgendaItem.tipos.length ? novoAgendaItem.tipos.join(" + ") : "Compromisso sem tipo ainda"}
           onClose={() => setDetalhesAbertos(false)}
           zIndex={70}
         >
@@ -2767,6 +2815,32 @@ export default function App() {
           zIndex={70}
         >
           <div style={{ background: "#fff", borderRadius: 16, padding: 18, marginBottom: 14 }}>
+            <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>Dosagem por vez</label>
+            <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+              <input
+                value={novoRecorrente.dose}
+                onChange={(e) => setNovoRecorrente({ ...novoRecorrente, dose: e.target.value })}
+                inputMode="decimal"
+                placeholder="Ex: 2,5"
+                style={{ flex: 1, padding: 9, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, boxSizing: "border-box", minWidth: 0 }}
+              />
+              <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                {DOSE_UNIDADES.map((u) => (
+                  <ChipToggle
+                    key={u}
+                    active={novoRecorrente.doseUnidade === u}
+                    color={TEAL}
+                    onClick={() => setNovoRecorrente({ ...novoRecorrente, doseUnidade: u })}
+                  >
+                    {u}
+                  </ChipToggle>
+                ))}
+              </div>
+            </div>
+            <div style={{ fontSize: 10.5, color: GREY, marginBottom: 16 }}>
+              Opcional. Conforme a prescrição do seu veterinário — o app só repete o que você anotar.
+            </div>
+
             <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>
               {novoRecorrente.horarios.length > 1 ? "Horários" : "Horário"}
             </label>

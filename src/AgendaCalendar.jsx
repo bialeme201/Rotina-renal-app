@@ -2,7 +2,7 @@ import { ChevronLeft, ChevronRight, Check, AlertCircle } from "lucide-react";
 import { TEAL, TERRACOTTA, INK, GREY } from "./theme.js";
 import {
   WEEKDAY_LETTERS, monthGrid, monthKeyOf, formatMonthLabel, parseDateKey,
-  weekDays, medStatus, medHorarios, medFrequenciaLabel, agendaStatus,
+  weekDays, medStatus, medHorarios, medFrequenciaLabel, doseLabel, agendaStatus,
   agendaTitulo, agendaResumoExames, jejumInfo, dayOccurrences, formatDayLabel,
   daysUntilLabel, lembretesLabel, formatDuration,
 } from "./agendaLogic.js";
@@ -365,6 +365,9 @@ export function DayPanel({
                     {oc.med.nome}
                   </div>
                   <div style={{ fontSize: 10.5, color: GREY, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    {doseLabel(oc.med) && (
+                      <span style={{ fontWeight: 700, color: TEAL }}>{doseLabel(oc.med)}</span>
+                    )}
                     <span>{medFrequenciaLabel(oc.med)}</span>
                     {oc.med.jejum && (
                       <Chip color={TERRACOTTA} bg="rgba(196,98,45,0.12)">

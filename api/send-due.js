@@ -101,10 +101,21 @@ function agendaExames(item) {
   return Array.isArray(item.exames) ? item.exames.filter(Boolean) : [];
 }
 
+function agendaTipos(item) {
+  if (Array.isArray(item.tipos) && item.tipos.length) return item.tipos.filter(Boolean);
+  return item.tipo ? [item.tipo] : [];
+}
+
 function agendaTitulo(item) {
-  if (item.tipo) return item.tipo;
+  const tipos = agendaTipos(item);
+  if (tipos.length) return tipos.join(" + ");
   const exames = agendaExames(item);
   return exames.length ? exames[0] : "Compromisso";
+}
+
+function doseLabel(med) {
+  if (!med || !med.dose) return "";
+  return `${String(med.dose).trim()} ${med.doseUnidade || "mg"}`;
 }
 
 // Contexto extra que vale a pena caber na notificação: os exames do dia e o
@@ -112,8 +123,9 @@ function agendaTitulo(item) {
 function agendaDetalhes(item) {
   const partes = [];
   const exames = agendaExames(item);
+  const tipos = agendaTipos(item);
   if (exames.length > 1) partes.push(`${exames.length} exames: ${exames.join(", ")}`);
-  else if (exames.length === 1 && exames[0] !== item.tipo) partes.push(exames[0]);
+  else if (exames.length === 1 && !tipos.includes(exames[0])) partes.push(exames[0]);
   if (item.jejum) {
     const horas = Number(item.jejumHoras) || 0;
     partes.push(horas ? `jejum de ${horas}h` : "precisa de jejum");
@@ -184,7 +196,7 @@ export default async function handler(req, res) {
           deviceId: row.device_id,
           key: `recorrente_${med.id}_${horario}_${today}`,
           title: `Hora do remédio de ${nome}`,
-          body: `${med.nome} · ${horario}${med.jejum ? " · dar em jejum" : ""}`,
+          body: `${med.nome}${doseLabel(med) ? ` · ${doseLabel(med)}` : ""} · ${horario}${med.jejum ? " · dar em jejum" : ""}`,
         });
       }
     }
