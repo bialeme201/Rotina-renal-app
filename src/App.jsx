@@ -1801,6 +1801,37 @@ export default function App() {
               </div>
             )}
 
+            {/* Sem nada cadastrado, o caminho de entrada precisa estar no topo —
+                o + flutuante sozinho demora a ser notado. */}
+            {agendaItems.length === 0 && recorrentes.length === 0 && (
+              <div style={{
+                background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+                border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: "20px 20px 18px",
+                marginBottom: 14, boxShadow: "0 20px 40px rgba(0,0,0,0.04)",
+              }}>
+                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 4 }}>
+                  Comece pela rotina{profile && profile.nome ? ` de ${profile.nome}` : ""}
+                </div>
+                <div style={{ fontSize: 11.5, color: GREY, lineHeight: 1.5, marginBottom: 14 }}>
+                  O que você cadastrar aqui aparece no calendário e vira lembrete no celular.
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => openNovoCompromisso(selectedDay)}
+                    style={{ flex: 1, padding: "11px 10px", borderRadius: 12, border: "none", background: TERRACOTTA, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}
+                  >
+                    + compromisso
+                  </button>
+                  <button
+                    onClick={() => openNovoRemedio(selectedDay)}
+                    style={{ flex: 1, padding: "11px 10px", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}
+                  >
+                    + remédio
+                  </button>
+                </div>
+              </div>
+            )}
+
             <TodaySummary
               todayKey={today}
               agendaItems={agendaItems}
