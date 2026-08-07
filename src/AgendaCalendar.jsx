@@ -203,8 +203,9 @@ export function WeekOverview({
           <ChevronRight size={18} />
         </button>
       </div>
-      <div style={{ fontSize: 11, color: GREY, textAlign: "center", marginBottom: 14 }}>
-        Toque num quadradinho para marcar ou desmarcar o remédio daquele dia.
+      <div style={{ fontSize: 11, color: GREY, textAlign: "center", marginBottom: 12, lineHeight: 1.45 }}>
+        Toque no <strong style={{ color: TEAL }}>dia</strong> para ver a lista dele, ou num
+        <strong style={{ color: TEAL }}> quadradinho</strong> para marcar a dose.
       </div>
 
       <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 320 }}>
@@ -216,19 +217,28 @@ export function WeekOverview({
               const isToday = key === todayKey;
               return (
                 <th key={key} style={{ width: 30, paddingBottom: 8 }}>
+                  {/* Cabeçalho do dia é um botão de verdade: fundo próprio para
+                      parecer tocável e destaque no dia aberto na lista abaixo. */}
                   <button
                     onClick={() => onSelectDay(key)}
+                    aria-label={`Ver a lista de ${parseDateKey(key).toLocaleDateString("pt-BR", { day: "2-digit", month: "long" })}`}
+                    aria-pressed={key === selected}
                     style={{
-                      border: "none", background: "none", cursor: "pointer", padding: 0,
-                      display: "flex", flexDirection: "column", alignItems: "center", gap: 2, width: "100%",
+                      border: key === selected ? `1.5px solid ${TEAL}` : "1px solid rgba(42,42,42,0.10)",
+                      background: key === selected ? "rgba(59,110,100,0.12)" : "rgba(42,42,42,0.03)",
+                      cursor: "pointer", padding: "4px 0 5px", borderRadius: 9,
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 1, width: "100%",
+                      transition: "background 0.18s ease, border-color 0.18s ease",
                     }}
                   >
-                    <span style={{ fontSize: 9.5, color: GREY, fontWeight: 700 }}>{WEEKDAY_LETTERS[d.getDay()]}</span>
+                    <span style={{ fontSize: 9, color: key === selected ? TEAL : GREY, fontWeight: 700 }}>
+                      {WEEKDAY_LETTERS[d.getDay()]}
+                    </span>
                     <span style={{
                       fontSize: 11, fontWeight: 800,
                       color: isToday ? "#fff" : key === selected ? TEAL : INK,
                       background: isToday ? TEAL : "transparent",
-                      borderRadius: "50%", width: 20, height: 20,
+                      borderRadius: "50%", width: 19, height: 19,
                       display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
                       {d.getDate()}
@@ -558,7 +568,7 @@ export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onAbr
 
           {dosesEmAtraso > 0 && (
             <button
-              onClick={() => onAbrirSemana(todayKey)}
+              onClick={() => onAbrirSemana(todayKey, "doses")}
               style={{ ...linhaAtraso, marginBottom: atrasados.length > 0 ? 6 : 0 }}
             >
               <AlertCircle size={16} strokeWidth={2.4} style={{ flexShrink: 0 }} />
@@ -573,7 +583,7 @@ export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onAbr
 
           {atrasados.length > 0 && (
             <button
-              onClick={() => onAbrirSemana(atrasados.slice().sort((a, b) => (a.data > b.data ? 1 : -1))[0].data)}
+              onClick={() => onAbrirSemana(atrasados.slice().sort((a, b) => (a.data > b.data ? 1 : -1))[0].data, "compromissos")}
               style={linhaAtraso}
             >
               <AlertCircle size={16} strokeWidth={2.4} style={{ flexShrink: 0 }} />
@@ -624,7 +634,7 @@ export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onAbr
 
       {proximo && (
         <button
-          onClick={() => onAbrirSemana(proximo.data)}
+          onClick={() => onAbrirSemana(proximo.data, "compromissos")}
           style={{
             width: "100%", textAlign: "left", border: "none", background: "rgba(42,42,42,0.04)",
             borderRadius: 12, padding: "10px 12px", cursor: "pointer", marginTop: 4,
