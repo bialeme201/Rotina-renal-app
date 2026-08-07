@@ -346,6 +346,29 @@ function SinaisTimeline({ dias, entries }) {
   );
 }
 
+// Fica colado na listagem, e não abaixo do seletor de visão: ali em cima
+// parecia que o filtro valia para o calendário.
+function FiltroChip({ filtro, onLimpar }) {
+  if (!filtro) return null;
+  return (
+    <button
+      onClick={onLimpar}
+      style={{
+        display: "flex", alignItems: "center", gap: 8, width: "100%", marginBottom: 8,
+        padding: "9px 12px", borderRadius: 12, cursor: "pointer",
+        border: "1px solid rgba(196,98,45,0.3)", background: "rgba(196,98,45,0.10)",
+        color: TERRACOTTA, fontFamily: "inherit", fontSize: 11.5, fontWeight: 700, textAlign: "left",
+      }}
+    >
+      <Filter size={13} strokeWidth={2.4} style={{ flexShrink: 0 }} />
+      <span style={{ flex: 1 }}>Só {FILTRO_ROTULO[filtro]}</span>
+      <span style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, textDecoration: "underline" }}>
+        ver tudo <X size={13} strokeWidth={2.6} />
+      </span>
+    </button>
+  );
+}
+
 function IconLabel({ icon: Icon, children }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
@@ -498,6 +521,7 @@ export default function App() {
   const [novoExameNome, setNovoExameNome] = useState("");
   const [novoTipoNome, setNovoTipoNome] = useState("");
   const agendaViewsRef = useRef(null);
+  const listaRef = useRef(null);
   const [agendaFiltro, setAgendaFiltro] = useState(null); // null | "doses" | "compromissos"
   const [saveMsg, setSaveMsg] = useState("");
   const [medSavedMsg, setMedSavedMsg] = useState("");
@@ -986,11 +1010,13 @@ export default function App() {
     goToDay(key);
     setAgendaView("Semana");
     setAgendaFiltro(filtro || null);
-    requestAnimationFrame(() => {
-      if (agendaViewsRef.current) {
-        agendaViewsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    });
+    // Com filtro o destino é a listagem, que é onde ele age e onde está a
+    // faixa para desfazê-lo. Sem filtro basta trazer o calendário à vista.
+    // Dois quadros para o alvo já existir quando a rolagem começa.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const alvo = (filtro ? listaRef.current : agendaViewsRef.current) || agendaViewsRef.current;
+      if (alvo) alvo.scrollIntoView({ behavior: "smooth", block: "start" });
+    }));
   }
 
   function flashSaved() {
@@ -1818,27 +1844,9 @@ export default function App() {
               onAbrirSemana={abrirNaSemana}
             />
 
-            <div ref={agendaViewsRef} style={{ marginBottom: agendaFiltro ? 10 : 14, scrollMarginTop: 12 }}>
+            <div ref={agendaViewsRef} style={{ marginBottom: 14, scrollMarginTop: 12 }}>
               <Segmented value={agendaView} onChange={setAgendaView} options={["Semana", "Mês", "Lista"]} />
             </div>
-
-            {agendaFiltro && (
-              <button
-                onClick={() => setAgendaFiltro(null)}
-                style={{
-                  display: "flex", alignItems: "center", gap: 8, width: "100%", marginBottom: 14,
-                  padding: "9px 12px", borderRadius: 12, cursor: "pointer",
-                  border: `1px solid rgba(196,98,45,0.3)`, background: "rgba(196,98,45,0.10)",
-                  color: TERRACOTTA, fontFamily: "inherit", fontSize: 11.5, fontWeight: 700, textAlign: "left",
-                }}
-              >
-                <Filter size={13} strokeWidth={2.4} style={{ flexShrink: 0 }} />
-                <span style={{ flex: 1 }}>Na lista, só {FILTRO_ROTULO[agendaFiltro]}</span>
-                <span style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, textDecoration: "underline" }}>
-                  ver tudo <X size={13} strokeWidth={2.6} />
-                </span>
-              </button>
-            )}
 
             {agendaView === "Mês" && (
               <MonthCalendar
@@ -1866,7 +1874,9 @@ export default function App() {
             )}
 
             {agendaView !== "Lista" && (
-              <DayPanel
+              <div ref={listaRef} style={{ scrollMarginTop: 12 }}>
+                <FiltroChip filtro={agendaFiltro} onLimpar={() => setAgendaFiltro(null)} />
+                <DayPanel
                 dayKey={selectedDay}
                 todayKey={today}
                 agendaItems={agendaItems}
@@ -1879,11 +1889,13 @@ export default function App() {
                 onEditMed={startEditRecorrente}
                 onAddCompromisso={openNovoCompromisso}
                 onAddMed={openNovoRemedio}
-              />
+                />
+              </div>
             )}
 
             {agendaView === "Lista" && (
-              <>
+              <div ref={listaRef} style={{ scrollMarginTop: 12 }}>
+                <FiltroChip filtro={agendaFiltro} onLimpar={() => setAgendaFiltro(null)} />
                 {agendaFiltro === "doses" ? null : agendaItems.length === 0 ? (
                   <div style={{ fontSize: 12.5, color: GREY, textAlign: "center", padding: "20px 0" }}>
                     Nada agendado ainda. Toque no + para incluir o primeiro compromisso.
@@ -2014,7 +2026,7 @@ export default function App() {
                 )}
                   </>
                 )}
-              </>
+              </div>
             )}
 
             {medSavedMsg && (
