@@ -3,7 +3,7 @@ import { BarChart, Bar, LineChart, Line, ReferenceLine, XAxis, YAxis, Tooltip, R
 import {
   HeartPulse, BookOpen, FolderOpen,
   Droplet, UtensilsCrossed, Smile, Waves, Syringe, Palette, Cat,
-  ExternalLink, Info, Stethoscope, Calendar, Plus, X, Bell, ChevronRight, Filter,
+  ExternalLink, Info, Stethoscope, Calendar, Plus, X, Bell, ChevronRight, Filter, Check,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
@@ -369,6 +369,77 @@ function FiltroChip({ filtro, onLimpar }) {
   );
 }
 
+// O app grava a cada toque, sem botão de salvar. Sem dizer isso em algum
+// lugar, a ausência do botão parece perda de dados.
+function AvisoSalvo({ salvo, msg, textoSalvo, textoVazio }) {
+  const ativo = Boolean(msg);
+  if (!salvo && !ativo) {
+    return (
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, padding: "11px 14px", borderRadius: 13,
+        background: "rgba(42,42,42,0.04)", color: GREY, fontSize: 11.5, fontWeight: 600, marginBottom: 14,
+      }}>
+        {textoVazio}
+      </div>
+    );
+  }
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 8, padding: "11px 14px", borderRadius: 13,
+      background: ativo ? "rgba(59,110,100,0.18)" : "rgba(59,110,100,0.09)",
+      color: TEAL, fontSize: 11.5, fontWeight: 700, marginBottom: 14,
+      transition: "background 0.3s ease",
+    }}>
+      <Check size={14} strokeWidth={3} style={{ flexShrink: 0 }} />
+      {ativo ? "Salvo agora" : textoSalvo}
+    </div>
+  );
+}
+
+// Resumo rápido do dia: o pote de água sozinho não dizia como o gato está.
+const RESUMO_CAMPOS = [
+  { campo: "agua", rotulo: "Água", icon: Droplet, neutro: "Normal", abaixo: "Menos" },
+  { campo: "apetite", rotulo: "Apetite", icon: UtensilsCrossed, neutro: "Normal", abaixo: "Menos" },
+  { campo: "humor", rotulo: "Humor", icon: Smile, neutro: "Tranquilo", abaixo: "Quieto" },
+  { campo: "urina", rotulo: "Urina", icon: Waves, neutro: "Normal", abaixo: "Menos" },
+];
+
+function ResumoCampo({ config, valor }) {
+  const Icon = config.icon;
+  const vazio = !valor;
+  const abaixo = valor === config.abaixo;
+  const cor = vazio ? GREY : abaixo ? TERRACOTTA : TEAL;
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 12,
+      background: vazio ? "rgba(42,42,42,0.03)" : abaixo ? "rgba(196,98,45,0.10)" : "rgba(59,110,100,0.08)",
+      border: vazio ? "1px dashed rgba(42,42,42,0.14)" : "1px solid transparent",
+    }}>
+      <Icon size={15} color={cor} strokeWidth={2.2} style={{ flexShrink: 0 }} />
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 9.5, color: GREY, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em" }}>
+          {config.rotulo}
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: cor, whiteSpace: "nowrap" }}>
+          {vazio ? "sem resposta" : valor}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Linha do histórico: só cita o que foi de fato respondido, porque um dia
+// pode existir apenas por causa de uma anotação.
+function resumoDoDia(e) {
+  const partes = [];
+  if (e.agua) partes.push(`água ${e.agua.toLowerCase()}`);
+  if (e.apetite) partes.push(`apetite ${e.apetite.toLowerCase()}`);
+  if (e.humor) partes.push(e.humor.toLowerCase());
+  if (e.soro === "Fiz") partes.push("soro feito");
+  if (e.corUrina === "Com sangue") partes.push("⚑ sangue na urina");
+  return partes.length ? partes.join(" · ") : "só anotação";
+}
+
 function IconLabel({ icon: Icon, children }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
@@ -616,7 +687,10 @@ export default function App() {
   const hidratacaoOk = last7Dates.filter((d) => entries[d].agua === "Normal" || entries[d].agua === "Mais").length;
 
   const today = todayKey();
-  const selectedEntry = entries[selectedDiaryDate] || { agua: "Normal", apetite: "Normal", humor: "Tranquilo", urina: "Normal", nota: "" };
+  // Sem registro, nada vem pré-selecionado: antes o dia em branco aparecia
+  // como "normal" respondido, o que fazia o registro real parecer não salvo.
+  const entryExiste = Boolean(entries[selectedDiaryDate]);
+  const selectedEntry = entries[selectedDiaryDate] || { agua: "", apetite: "", humor: "", urina: "", corUrina: "", soro: "Não fiz", nota: "" };
   const isEditingToday = selectedDiaryDate === today;
 
   const agendaGroups = { late: [], today: [], future: [], done: [] };
@@ -1140,6 +1214,30 @@ export default function App() {
     } catch (err) {}
   }
 
+  // Alterna: marca o dia inteiro como normal ou desfaz a marcação. Ao desfazer,
+  // preserva anotação e soro se existirem — só descarta as observações.
+  function toggleDiaNormal() {
+    const atual = entries[selectedDiaryDate] || {};
+    if (isNormalSelected) {
+      const next = { ...entries };
+      if (atual.nota || atual.soro === "Fiz") {
+        next[selectedDiaryDate] = { agua: "", apetite: "", humor: "", urina: "", corUrina: "", soro: atual.soro || "Não fiz", nota: atual.nota || "" };
+      } else {
+        delete next[selectedDiaryDate];
+      }
+      saveEntries(next);
+      return;
+    }
+    track("mark_day_normal");
+    saveEntries({
+      ...entries,
+      [selectedDiaryDate]: {
+        agua: "Normal", apetite: "Normal", humor: "Tranquilo", urina: "Normal", corUrina: "Normal",
+        soro: atual.soro || "Não fiz", nota: atual.nota || "",
+      },
+    });
+  }
+
   function updateSelectedEntry(field, value) {
     const next = { ...entries, [selectedDiaryDate]: { ...selectedEntry, [field]: value } };
     saveEntries(next);
@@ -1183,6 +1281,7 @@ export default function App() {
     (last3Dates.every((d) => entries[d].apetite === "Menos") || last3Dates.every((d) => entries[d].humor === "Quieto"));
 
   const isNormalSelected =
+    entryExiste &&
     selectedEntry.agua === "Normal" &&
     selectedEntry.apetite === "Normal" &&
     selectedEntry.humor === "Tranquilo" &&
@@ -1380,10 +1479,8 @@ export default function App() {
             )}
 
             <button
-              onClick={() => {
-                track("mark_day_normal");
-                saveEntries({ ...entries, [selectedDiaryDate]: { agua: "Normal", apetite: "Normal", humor: "Tranquilo", urina: "Normal", corUrina: "Normal", soro: selectedEntry.soro || "Não fiz", nota: selectedEntry.nota } });
-              }}
+              onClick={toggleDiaNormal}
+              aria-pressed={isNormalSelected}
               style={{
                 width: "100%", display: "flex", alignItems: "center", gap: 12, textAlign: "left",
                 padding: "12px 16px", borderRadius: 16, border: "none", cursor: "pointer", marginBottom: 12,
@@ -1401,17 +1498,29 @@ export default function App() {
                 {isNormalSelected && <span style={{ color: "#fff", fontSize: 14, fontWeight: 800 }}>✓</span>}
               </div>
               <span style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, color: isNormalSelected ? TEAL : GREY }}>
-                Marcar dia como normal
+                {isNormalSelected ? "Dia marcado como normal — toque para desmarcar" : "Marcar dia como normal"}
               </span>
             </button>
 
             <div style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.8)", borderRadius: 22, padding: 18, marginBottom: 12, boxShadow: "0 20px 40px rgba(0,0,0,0.04)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
                 <WaterBowl level={selectedEntry.agua === "Menos" ? 0 : selectedEntry.agua === "Mais" ? 2 : 1} />
-                <div>
-                  <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, color: TEAL }}>{isEditingToday ? "Água hoje" : "Água nesse dia"}</div>
-                  <div style={{ fontSize: 13, color: GREY }}>{selectedEntry.agua === "Normal" ? "Bebendo normal" : selectedEntry.agua === "Mais" ? "Bebendo mais que o normal" : "Bebendo menos — vale observar"}</div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, color: INK }}>
+                    {isEditingToday ? "Como está hoje" : "Como estava nesse dia"}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: GREY, lineHeight: 1.45, marginTop: 2 }}>
+                    {entryExiste
+                      ? "Resposta salva automaticamente — toque em qualquer opção abaixo para mudar."
+                      : "Nada respondido ainda neste dia."}
+                  </div>
                 </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {RESUMO_CAMPOS.map((config) => (
+                  <ResumoCampo key={config.campo} config={config} valor={selectedEntry[config.campo]} />
+                ))}
               </div>
               {last7Dates.length > 0 && (
                 <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid rgba(42,42,42,0.06)" }}>
@@ -1486,6 +1595,13 @@ export default function App() {
                 style={{ width: "100%", minHeight: 60, borderRadius: 13, border: "1px solid rgba(42,42,42,0.08)", padding: 10, fontSize: 13, fontFamily: "inherit", resize: "vertical" }}
               />
             </div>
+
+            <AvisoSalvo
+              salvo={entryExiste}
+              msg={saveMsg}
+              textoSalvo="Tudo salvo — este app não tem botão de salvar, cada resposta é gravada na hora."
+              textoVazio="Nada respondido ainda neste dia. O que você tocar é gravado na hora."
+            />
 
             <div style={{ fontSize: 11, color: GREY, marginBottom: 18, fontStyle: "italic" }}>
               Isto é registro de observação, não diagnóstico. Leve mudanças relevantes para o seu veterinário.
@@ -1660,7 +1776,17 @@ export default function App() {
                 </button>
               </div>
             </div>
-            <div style={{ fontSize: 11, color: GREY, marginTop: 12, fontStyle: "italic" }}>
+
+            <div style={{ marginTop: 12 }}>
+              <AvisoSalvo
+                salvo={qolTotal > 0}
+                msg={saveMsg}
+                textoSalvo="Escala salva — cada ajuste é gravado na hora, sem botão de salvar."
+                textoVazio="Escala ainda não preenchida hoje. Mova qualquer barra e o valor é gravado na hora."
+              />
+            </div>
+
+            <div style={{ fontSize: 11, color: GREY, fontStyle: "italic" }}>
               Esta escala organiza a conversa com seu veterinário — não substitui a avaliação clínica dele.
             </div>
           </div>
@@ -1742,7 +1868,7 @@ export default function App() {
                     >
                       <span style={{ fontWeight: 700, color: isSelected ? TEAL : INK }}>{new Date(date + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</span>
                       <span style={{ color: e.corUrina === "Com sangue" ? TERRACOTTA : GREY, fontWeight: e.corUrina === "Com sangue" ? 700 : 400 }}>
-                        água {e.agua.toLowerCase()} · apetite {e.apetite.toLowerCase()} · {e.humor.toLowerCase()}{e.soro === "Fiz" ? " · soro feito" : ""}{e.corUrina === "Com sangue" ? " · ⚑ sangue na urina" : ""}
+                        {resumoDoDia(e)}
                       </span>
                     </button>
                   );
