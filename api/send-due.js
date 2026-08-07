@@ -118,6 +118,17 @@ function doseLabel(med) {
   return `${String(med.dose).trim()} ${med.doseUnidade || "mg"}`;
 }
 
+// Cadastros anteriores não têm esses campos: avisam na hora, que era o
+// comportamento fixo antes de a antecedência ser configurável.
+function medAvisar(med) {
+  return med ? med.avisar !== false : true;
+}
+
+function medAvisoMinutos(med) {
+  const m = Number(med && med.avisoMinutosAntes);
+  return Number.isFinite(m) && m > 0 ? m : 0;
+}
+
 // Contexto extra que vale a pena caber na notificação: os exames do dia e o
 // jejum, que é justamente o que costuma ser esquecido na véspera.
 function agendaDetalhes(item) {
@@ -191,11 +202,19 @@ export default async function handler(req, res) {
           }
         }
 
-        if (!dentroDaJanela(medMinutes)) continue;
+        if (!medAvisar(med)) continue;
+
+        // A chave não inclui a antecedência de propósito: mudar de "na hora"
+        // para "15min antes" no meio do dia não deve render um segundo aviso
+        // da mesma dose.
+        const antecedencia = medAvisoMinutos(med);
+        if (!dentroDaJanela(medMinutes - antecedencia)) continue;
         toSend.push({
           deviceId: row.device_id,
           key: `recorrente_${med.id}_${horario}_${today}`,
-          title: `Hora do remédio de ${nome}`,
+          title: antecedencia === 0
+            ? `Hora do remédio de ${nome}`
+            : `Daqui a ${formatDuration(antecedencia)}: remédio de ${nome}`,
           body: `${med.nome}${doseLabel(med) ? ` · ${doseLabel(med)}` : ""} · ${horario}${med.jejum ? " · dar em jejum" : ""}`,
         });
       }

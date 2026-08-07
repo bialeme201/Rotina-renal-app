@@ -15,7 +15,9 @@ import { MonthCalendar, WeekOverview, DayPanel, TodaySummary } from "./AgendaCal
 import {
   dateKeyFromDate, addDays, addMonths, startOfWeek, monthKeyOf, medOccursOn, medStatus,
   medHorarios, medFrequencia, medFrequenciaLabel, medCheckKey, agendaStatus, agendaTitulo,
-  agendaExames, agendaTipos, doseLabel, jejumInfo, daysUntilLabel as agendaDaysUntilLabel, normalizeLembretes,
+  agendaExames, agendaTipos, doseLabel, medAvisar, medAvisoMinutos, avisoLabel,
+  explicaAvisoRemedio, AVISO_MED_OPCOES,
+  jejumInfo, daysUntilLabel as agendaDaysUntilLabel, normalizeLembretes,
   lembretesLabel, formatDuration, WEEKDAY_SHORT,
   DEFAULT_LEMBRETES, DIAS_ANTES_OPCOES, MINUTOS_ANTES_OPCOES,
   JEJUM_HORAS_OPCOES, JEJUM_MINUTOS_MED_OPCOES,
@@ -35,7 +37,7 @@ const EMPTY_AGENDA_ITEM = {
 const EMPTY_RECORRENTE = {
   nome: "", dose: "", doseUnidade: "mg", horarios: [""], frequencia: "24h",
   dias: [0, 1, 2, 3, 4, 5, 6], duracao: "continuo", dataInicio: todayKey(), dataFim: "",
-  jejum: false, jejumMinutos: 60,
+  jejum: false, jejumMinutos: 60, avisar: true, avisoMinutosAntes: 0,
 };
 
 const HORARIOS_SUGERIDOS = ["07:00", "08:00", "12:00", "18:00", "20:00", "22:00"];
@@ -66,6 +68,7 @@ function resumoRemedio(med) {
       : med.dias.slice().sort().map((d) => WEEKDAY_SHORT[d]).join(", ") || "nenhum dia");
   }
   if (med.jejum) partes.push(`jejum de ${formatDuration(med.jejumMinutos)}`);
+  partes.push(avisoLabel(med));
   if (med.duracao === "determinado" && med.dataFim) {
     partes.push(`até ${new Date(med.dataFim + "T12:00:00").toLocaleDateString("pt-BR")}`);
   }
@@ -895,6 +898,8 @@ export default function App() {
       dataFim: med.dataFim || "",
       jejum: !!med.jejum,
       jejumMinutos: Number(med.jejumMinutos) || 60,
+      avisar: medAvisar(med),
+      avisoMinutosAntes: medAvisoMinutos(med),
     });
     setSheet("remedio");
   }
@@ -2946,6 +2951,49 @@ export default function App() {
                 </div>
               </div>
             )}
+
+            <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid rgba(42,42,42,0.08)" }}>
+              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                <Bell size={14} color={TEAL} /> Quando avisar
+              </div>
+
+              <Segmented
+                value={novoRecorrente.avisar ? "Sim" : "Não"}
+                onChange={(v) => setNovoRecorrente({ ...novoRecorrente, avisar: v === "Sim" })}
+                options={["Não", "Sim"]}
+              />
+
+              {novoRecorrente.avisar && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                  {AVISO_MED_OPCOES.map((m) => (
+                    <ChipToggle
+                      key={m}
+                      active={Number(novoRecorrente.avisoMinutosAntes) === m}
+                      color={TEAL}
+                      onClick={() => setNovoRecorrente({ ...novoRecorrente, avisoMinutosAntes: m })}
+                    >
+                      {m === 0 ? "Na hora" : `${formatDuration(m)} antes`}
+                    </ChipToggle>
+                  ))}
+                </div>
+              )}
+
+              <div style={{
+                marginTop: 12, padding: "11px 13px", borderRadius: 12,
+                background: novoRecorrente.avisar ? "rgba(59,110,100,0.09)" : "rgba(42,42,42,0.05)",
+                fontSize: 11.5, lineHeight: 1.5, color: novoRecorrente.avisar ? TEAL : GREY,
+              }}>
+                {explicaAvisoRemedio(novoRecorrente)}
+              </div>
+
+              {novoRecorrente.avisar && pushStatus !== "subscribed" && (
+                <div style={{ marginTop: 8, fontSize: 11, color: TERRACOTTA, lineHeight: 1.5 }}>
+                  {pushSupported()
+                    ? "As notificações ainda não estão ativadas neste aparelho — sem isso o aviso não chega. Dá para ativar no topo da Agenda."
+                    : "Este navegador não envia notificações. O remédio continua aparecendo na agenda, mas sem aviso no celular."}
+                </div>
+              )}
+            </div>
 
             <label style={{ fontSize: 12, color: GREY, display: "block", margin: "16px 0 6px" }}>Duração</label>
             <Segmented

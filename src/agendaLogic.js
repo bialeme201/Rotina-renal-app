@@ -154,6 +154,72 @@ export function doseLabel(med) {
   return `${String(med.dose).trim()} ${med.doseUnidade || "mg"}`;
 }
 
+// ---- aviso do remédio --------------------------------------------------
+// Cadastros anteriores a esta versão não têm os campos: avisam na hora,
+// que era o comportamento fixo do envio.
+
+export const AVISO_MED_OPCOES = [0, 5, 15, 30];
+
+export function medAvisar(med) {
+  return med ? med.avisar !== false : true;
+}
+
+export function medAvisoMinutos(med) {
+  const m = Number(med && med.avisoMinutosAntes);
+  return Number.isFinite(m) && m > 0 ? m : 0;
+}
+
+export function avisoLabel(med) {
+  if (!medAvisar(med)) return "sem aviso";
+  const min = medAvisoMinutos(med);
+  return min === 0 ? "avisa na hora" : `avisa ${formatDuration(min)} antes`;
+}
+
+// Os horários em que a notificação realmente chega — é isso que a tela
+// precisa mostrar para a pessoa não ter que fazer a conta de cabeça.
+export function horariosDoAviso(med) {
+  const offset = medAvisoMinutos(med);
+  return medHorarios(med)
+    .map((h) => {
+      const m = parseHorario(h);
+      return m === null ? null : minutesToHorario(m - offset);
+    })
+    .filter(Boolean);
+}
+
+export function horariosDoJejum(med) {
+  if (!med || !med.jejum) return [];
+  const minutos = Number(med.jejumMinutos) || 0;
+  if (!minutos) return [];
+  return medHorarios(med)
+    .map((h) => {
+      const m = parseHorario(h);
+      return m === null ? null : minutesToHorario(m - minutos);
+    })
+    .filter(Boolean);
+}
+
+function listar(itens) {
+  if (itens.length === 1) return itens[0];
+  return `${itens.slice(0, -1).join(", ")} e ${itens[itens.length - 1]}`;
+}
+
+// A frase que explica, em português, exatamente o que vai chegar no celular.
+export function explicaAvisoRemedio(med) {
+  if (!medAvisar(med)) return "Você não vai receber aviso no celular para este remédio.";
+  const horarios = horariosDoAviso(med);
+  if (horarios.length === 0) return "Defina o horário acima para o aviso funcionar.";
+
+  const offset = medAvisoMinutos(med);
+  const quando = offset === 0
+    ? `Você recebe um aviso às ${listar(horarios)}, na hora da dose.`
+    : `Você recebe um aviso às ${listar(horarios)} — ${formatDuration(offset)} antes de cada dose.`;
+
+  const jejum = horariosDoJejum(med);
+  if (jejum.length === 0) return quando;
+  return `${quando} E às ${listar(jejum)}, avisando para começar o jejum.`;
+}
+
 export function medFrequenciaLabel(med) {
   const freq = medFrequencia(med);
   if (freq === "24h") return "a cada 24h";
