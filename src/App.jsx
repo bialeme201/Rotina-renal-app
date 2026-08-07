@@ -428,6 +428,22 @@ function ResumoCampo({ config, valor }) {
   );
 }
 
+// Perfis salvos antes desta versão não têm a lista; o contato de emergência
+// solto vira o primeiro tutor para nada se perder.
+function tutoresDoPerfil(profile) {
+  if (!profile) return [];
+  if (Array.isArray(profile.tutores)) {
+    const validos = profile.tutores.filter((t) => t && (t.nome || t.telefone));
+    if (validos.length) return validos;
+  }
+  if (profile.contatoEmergencia) return [{ nome: profile.contatoEmergencia, telefone: "" }];
+  return [];
+}
+
+function tutorTexto(t) {
+  return [t.nome, t.telefone].filter(Boolean).join(" — ");
+}
+
 // Linha da medicação no resumo do veterinário: tudo que foi prescrito e como
 // está sendo dado, numa linha só.
 function linhaRemedio(med) {
@@ -625,7 +641,7 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
-  const [draftProfile, setDraftProfile] = useState({ nome: "", idade: "", dataDiagnostico: "", estagio: "", vetNome: "", vetTelefone: "", rotinaHorarios: "", contatoEmergencia: "" });
+  const [draftProfile, setDraftProfile] = useState({ nome: "", idade: "", dataDiagnostico: "", estagio: "", vetNome: "", vetTelefone: "", observacoes: "", contatoEmergencia: "", tutores: [{ nome: "", telefone: "" }] });
   const [showReport, setShowReport] = useState(false);
   const [showManual, setShowManual] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(null);
@@ -720,6 +736,7 @@ export default function App() {
 
   // Remédio encerrado ainda interessa ao veterinário, mas separado do que está
   // em uso hoje.
+  const tutoresDoManual = tutoresDoPerfil(profile);
   const remedioEncerrado = (m) => m.duracao === "determinado" && m.dataFim && m.dataFim < today;
   const remediosEmUso = recorrentes.filter((m) => !remedioEncerrado(m));
   const remediosEncerrados = recorrentes.filter(remedioEncerrado);
@@ -1388,7 +1405,17 @@ export default function App() {
 
           {profile && (
             <button
-              onClick={() => { setDraftProfile(profile); setShowOnboarding(true); setOnboardingStep(1); }}
+              onClick={() => {
+                // Garante os campos novos ao editar um perfil salvo antes deles.
+                const tutores = tutoresDoPerfil(profile);
+                setDraftProfile({
+                  ...profile,
+                  observacoes: profile.observacoes || profile.rotinaHorarios || "",
+                  tutores: tutores.length ? tutores : [{ nome: "", telefone: "" }],
+                });
+                setShowOnboarding(true);
+                setOnboardingStep(1);
+              }}
               style={{ border: "none", background: "rgba(42,42,42,0.05)", color: GREY, fontSize: 11, cursor: "pointer", padding: "7px 12px", borderRadius: 999, fontWeight: 700 }}
             >
               editar
@@ -3533,15 +3560,60 @@ export default function App() {
                   value={draftProfile.contatoEmergencia}
                   onChange={(e) => setDraftProfile({ ...draftProfile, contatoEmergencia: e.target.value })}
                   placeholder="Ex: Hospital 24h — (11) 98888-8888"
-                  style={{ width: "100%", padding: 8, borderRadius: 13, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13.5, marginBottom: 10 }}
+                  style={{ width: "100%", padding: 8, borderRadius: 13, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13.5, marginBottom: 14 }}
                 />
 
-                <label style={{ fontSize: 12, fontWeight: 700, color: TEAL, display: "block", marginBottom: 4 }}>Rotina de horários (livre)</label>
+                <label style={{ fontSize: 12, fontWeight: 700, color: TEAL, display: "block", marginBottom: 2 }}>Tutores</label>
+                <div style={{ fontSize: 10.5, color: GREY, marginBottom: 8 }}>
+                  Quem estiver com o gato deve procurar por eles. Dá para incluir mais de uma pessoa.
+                </div>
+                {(draftProfile.tutores || []).map((t, i) => (
+                  <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "center" }}>
+                    <input
+                      value={t.nome}
+                      onChange={(e) => {
+                        const tutores = [...draftProfile.tutores];
+                        tutores[i] = { ...tutores[i], nome: e.target.value };
+                        setDraftProfile({ ...draftProfile, tutores });
+                      }}
+                      placeholder="Nome"
+                      style={{ flex: 1, minWidth: 0, padding: 8, borderRadius: 13, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13.5, boxSizing: "border-box" }}
+                    />
+                    <input
+                      value={t.telefone}
+                      onChange={(e) => {
+                        const tutores = [...draftProfile.tutores];
+                        tutores[i] = { ...tutores[i], telefone: e.target.value };
+                        setDraftProfile({ ...draftProfile, tutores });
+                      }}
+                      placeholder="Telefone"
+                      inputMode="tel"
+                      style={{ flex: 1, minWidth: 0, padding: 8, borderRadius: 13, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13.5, boxSizing: "border-box" }}
+                    />
+                    {draftProfile.tutores.length > 1 && (
+                      <button
+                        onClick={() => setDraftProfile({ ...draftProfile, tutores: draftProfile.tutores.filter((_, j) => j !== i) })}
+                        aria-label="Remover tutor"
+                        style={{ border: "none", background: "none", color: GREY, cursor: "pointer", padding: 4, display: "flex", flexShrink: 0 }}
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  onClick={() => setDraftProfile({ ...draftProfile, tutores: [...(draftProfile.tutores || []), { nome: "", telefone: "" }] })}
+                  style={{ border: "none", background: "none", color: TEAL, fontSize: 11.5, fontWeight: 700, cursor: "pointer", padding: 0, marginBottom: 14, textDecoration: "underline" }}
+                >
+                  + outro tutor
+                </button>
+
+                <label style={{ fontSize: 12, fontWeight: 700, color: TEAL, display: "block", marginBottom: 4 }}>Observações</label>
                 <textarea
-                  value={draftProfile.rotinaHorarios}
-                  onChange={(e) => setDraftProfile({ ...draftProfile, rotinaHorarios: e.target.value })}
-                  placeholder={"Ex: 8h - remédio X\n13h - ração renal\n20h - remédio Y"}
-                  style={{ width: "100%", minHeight: 54, padding: 8, borderRadius: 13, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, fontFamily: "inherit", marginBottom: 12, resize: "vertical" }}
+                  value={draftProfile.observacoes}
+                  onChange={(e) => setDraftProfile({ ...draftProfile, observacoes: e.target.value })}
+                  placeholder={"Ex: se esconde embaixo da cama quando assusta\nnão gosta de ser pego no colo\na ração fica no armário da cozinha"}
+                  style={{ width: "100%", minHeight: 64, padding: 8, borderRadius: 13, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13, fontFamily: "inherit", marginBottom: 12, resize: "vertical" }}
                 />
 
                 <div style={{ display: "flex", gap: 8 }}>
@@ -3681,10 +3753,16 @@ export default function App() {
               <div style={{ fontSize: 11.5, color: GREY, marginBottom: 18 }}>Folha única para deixar com quem cuidar dele</div>
 
               <div style={{ marginBottom: 14 }}>
-                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, marginBottom: 4 }}>Rotina de horários</div>
-                <div style={{ fontSize: 13, color: INK, whiteSpace: "pre-line" }}>
-                  {(profile && profile.rotinaHorarios) || "Nenhuma rotina cadastrada ainda — edite o perfil para adicionar."}
+                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, marginBottom: 4 }}>
+                  {tutoresDoManual.length > 1 ? "Tutores" : "Tutor"}
                 </div>
+                {tutoresDoManual.length === 0 ? (
+                  <div style={{ fontSize: 13, color: GREY }}>Não informado — edite o perfil para adicionar.</div>
+                ) : (
+                  tutoresDoManual.map((t, i) => (
+                    <div key={i} style={{ fontSize: 13, color: INK }}>{tutorTexto(t)}</div>
+                  ))
+                )}
               </div>
 
               <div style={{ marginBottom: 14 }}>
@@ -3694,10 +3772,17 @@ export default function App() {
                 </div>
               </div>
 
-              <div style={{ marginBottom: 18 }}>
+              <div style={{ marginBottom: 14 }}>
                 <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, marginBottom: 4 }}>Contato de emergência</div>
                 <div style={{ fontSize: 13, color: INK }}>
                   {(profile && profile.contatoEmergencia) || "Não informado"}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, marginBottom: 4 }}>Observações</div>
+                <div style={{ fontSize: 13, color: INK, whiteSpace: "pre-line" }}>
+                  {(profile && profile.observacoes) || "Nada anotado ainda — edite o perfil para adicionar."}
                 </div>
               </div>
 
@@ -3709,9 +3794,10 @@ export default function App() {
             <a
               href={buildWhatsAppLink(
                 `Manual do Tutor — ${profile && profile.nome ? profile.nome : "meu gato"}\n\n` +
-                `Rotina de horários:\n${(profile && profile.rotinaHorarios) || "Nenhuma rotina cadastrada"}\n\n` +
+                `${tutoresDoManual.length > 1 ? "Tutores" : "Tutor"}:\n${tutoresDoManual.length ? tutoresDoManual.map((t) => `- ${tutorTexto(t)}`).join("\n") : "Não informado"}\n\n` +
                 `Veterinário: ${(profile && profile.vetNome) || "Não informado"}${profile && profile.vetTelefone ? ` — ${profile.vetTelefone}` : ""}\n\n` +
-                `Contato de emergência: ${(profile && profile.contatoEmergencia) || "Não informado"}`
+                `Contato de emergência: ${(profile && profile.contatoEmergencia) || "Não informado"}\n\n` +
+                `Observações:\n${(profile && profile.observacoes) || "Nada anotado"}`
               )}
               target="_blank"
               rel="noopener noreferrer"
