@@ -524,46 +524,74 @@ export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onAbr
 
   if (recorrentes.length === 0 && agendaItems.length === 0) return null;
 
+  const linhaAtraso = {
+    width: "100%", display: "flex", alignItems: "center", gap: 10,
+    padding: "11px 13px", borderRadius: 12, cursor: "pointer", border: "none",
+    background: STATUS_STYLE.late.bg, color: STATUS_STYLE.late.fg,
+    fontFamily: "inherit", textAlign: "left",
+  };
+
   return (
+    <>
+      {/* Bloco separado do "Hoje" de propósito: misturar dias passados com o
+          dia corrente fazia o cartão dizer "tudo em dia" logo acima de doses
+          pendentes de hoje. Aqui só se fala do que já passou. */}
+      {tudoEmDia ? (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 9, marginBottom: 10,
+          padding: "10px 14px", borderRadius: 14,
+          background: "rgba(59,110,100,0.10)", color: TEAL,
+        }}>
+          <Check size={15} strokeWidth={3} style={{ flexShrink: 0 }} />
+          <span style={{ fontSize: 11.5, fontWeight: 700, lineHeight: 1.4 }}>
+            Nada ficou para trás nos últimos dias.
+          </span>
+        </div>
+      ) : (
+        <div style={{ ...cardStyle, padding: "16px 16px 14px", marginBottom: 10 }}>
+          <div style={{
+            fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 10,
+            letterSpacing: "0.05em", textTransform: "uppercase", color: GREY, marginBottom: 10,
+          }}>
+            O que ficou para trás
+          </div>
+
+          {dosesEmAtraso > 0 && (
+            <button
+              onClick={() => onAbrirSemana(todayKey)}
+              style={{ ...linhaAtraso, marginBottom: atrasados.length > 0 ? 6 : 0 }}
+            >
+              <AlertCircle size={16} strokeWidth={2.4} style={{ flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 12, fontWeight: 700, lineHeight: 1.4 }}>
+                {dosesEmAtraso === 1
+                  ? "1 dose sem marcação"
+                  : `${dosesEmAtraso} doses sem marcação`}
+              </span>
+              <ChevronRight size={16} strokeWidth={2.4} style={{ flexShrink: 0 }} />
+            </button>
+          )}
+
+          {atrasados.length > 0 && (
+            <button
+              onClick={() => onAbrirSemana(atrasados.slice().sort((a, b) => (a.data > b.data ? 1 : -1))[0].data)}
+              style={linhaAtraso}
+            >
+              <AlertCircle size={16} strokeWidth={2.4} style={{ flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 12, fontWeight: 700, lineHeight: 1.4 }}>
+                {atrasados.length === 1
+                  ? "1 compromisso passou da data sem ser marcado como feito"
+                  : `${atrasados.length} compromissos passaram da data sem serem marcados como feitos`}
+              </span>
+              <ChevronRight size={16} strokeWidth={2.4} style={{ flexShrink: 0 }} />
+            </button>
+          )}
+        </div>
+      )}
+
     <div style={{ ...cardStyle, padding: "18px 18px 16px", marginBottom: 14 }}>
       <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, marginBottom: 10 }}>
         Hoje
       </div>
-
-      {/* Pendência acumulada vem antes do resto: é o único item do cartão que
-          fala de dias que já passaram, e é o que corre risco de ser esquecido. */}
-      {dosesEmAtraso > 0 && (
-        <button
-          onClick={() => onAbrirSemana(todayKey)}
-          style={{
-            width: "100%", display: "flex", alignItems: "center", gap: 10, marginBottom: 10,
-            padding: "12px 14px", borderRadius: 12, cursor: "pointer", border: "none",
-            background: STATUS_STYLE.late.bg, color: STATUS_STYLE.late.fg,
-            fontFamily: "inherit", textAlign: "left",
-          }}
-        >
-          <AlertCircle size={17} strokeWidth={2.4} style={{ flexShrink: 0 }} />
-          <span style={{ flex: 1, fontSize: 12, fontWeight: 700, lineHeight: 1.4 }}>
-            {dosesEmAtraso === 1
-              ? "1 dose de dias anteriores ficou sem marcação"
-              : `${dosesEmAtraso} doses de dias anteriores ficaram sem marcação`}
-          </span>
-          <ChevronRight size={16} strokeWidth={2.4} style={{ flexShrink: 0 }} />
-        </button>
-      )}
-
-      {tudoEmDia && (
-        <div style={{
-          display: "flex", alignItems: "center", gap: 10, marginBottom: 10,
-          padding: "12px 14px", borderRadius: 12,
-          background: "rgba(59,110,100,0.10)", color: TEAL,
-        }}>
-          <Check size={17} strokeWidth={3} style={{ flexShrink: 0 }} />
-          <span style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.4 }}>
-            Tudo em dia — nada ficou para trás.
-          </span>
-        </div>
-      )}
 
       {hoje.length === 0 ? (
         <div style={{ fontSize: 12.5, color: GREY }}>Nada marcado para hoje.</div>
@@ -617,24 +645,7 @@ export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onAbr
         </button>
       )}
 
-      {atrasados.length > 0 && (
-        <button
-          onClick={() => onAbrirSemana(atrasados.slice().sort((a, b) => (a.data > b.data ? 1 : -1))[0].data)}
-          style={{
-            width: "100%", textAlign: "left", border: "none", background: "rgba(196,98,45,0.10)",
-            borderRadius: 12, padding: "10px 12px", cursor: "pointer", marginTop: 8,
-            fontSize: 11.5, color: TERRACOTTA, fontWeight: 700,
-            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6,
-          }}
-        >
-          <span>
-            {atrasados.length === 1
-              ? "1 compromisso passou da data sem ser marcado como feito"
-              : `${atrasados.length} compromissos passaram da data sem serem marcados como feitos`}
-          </span>
-          <ChevronRight size={16} color={TERRACOTTA} strokeWidth={2.4} style={{ flexShrink: 0 }} />
-        </button>
-      )}
     </div>
+    </>
   );
 }
