@@ -15,7 +15,7 @@ import { MonthCalendar, WeekOverview, DayPanel, TodaySummary, FILTRO_ROTULO } fr
 import {
   dateKeyFromDate, addDays, addMonths, startOfWeek, monthKeyOf, medOccursOn, medStatus,
   medHorarios, medFrequencia, medFrequenciaLabel, medCheckKey, agendaStatus, agendaTitulo,
-  agendaExames, agendaTipos, doseLabel, medAvisar, medAvisoMinutos, avisoLabel,
+  agendaExames, agendaTipos, agendaAvisar, doseLabel, medAvisar, medAvisoMinutos, avisoLabel,
   explicaAvisoRemedio, AVISO_MED_OPCOES, normalizeNotifPrefs, DEFAULT_NOTIF_PREFS,
   jejumInfo, daysUntilLabel as agendaDaysUntilLabel, normalizeLembretes,
   lembretesLabel, formatDuration, WEEKDAY_SHORT,
@@ -31,7 +31,7 @@ function todayKey() {
 
 const EMPTY_AGENDA_ITEM = {
   tipos: [], exames: [], data: "", horario: "", obs: "",
-  jejum: false, jejumHoras: 8, lembretes: DEFAULT_LEMBRETES, concluido: false,
+  jejum: false, jejumHoras: 8, lembretes: DEFAULT_LEMBRETES, concluido: false, avisar: true,
 };
 
 const EMPTY_RECORRENTE = {
@@ -483,6 +483,45 @@ function resumoDoDia(e) {
   return partes.length ? partes.join(" · ") : "só anotação";
 }
 
+// Ação em massa sobre o que já está cadastrado — separada do padrão, que só
+// vale para os próximos.
+function AcoesEmMassa({ total, comAviso, rotulo, onLigar, onDesligar }) {
+  if (total === 0) return null;
+  return (
+    <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(42,42,42,0.08)" }}>
+      <div style={{ fontSize: 11, color: GREY, marginBottom: 8, lineHeight: 1.5 }}>
+        Já cadastrados: <strong>{comAviso} de {total}</strong> {rotulo} com aviso ligado.
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={onDesligar}
+          disabled={comAviso === 0}
+          style={{
+            flex: 1, padding: "9px 8px", borderRadius: 11, fontSize: 11.5, fontWeight: 700, fontFamily: "inherit",
+            border: `1px solid ${comAviso === 0 ? "rgba(42,42,42,0.12)" : "rgba(196,98,45,0.35)"}`,
+            background: "transparent", color: comAviso === 0 ? GREY : TERRACOTTA,
+            cursor: comAviso === 0 ? "default" : "pointer", opacity: comAviso === 0 ? 0.6 : 1,
+          }}
+        >
+          Desativar todos
+        </button>
+        <button
+          onClick={onLigar}
+          disabled={comAviso === total}
+          style={{
+            flex: 1, padding: "9px 8px", borderRadius: 11, fontSize: 11.5, fontWeight: 700, fontFamily: "inherit",
+            border: `1px solid ${comAviso === total ? "rgba(42,42,42,0.12)" : "rgba(59,110,100,0.35)"}`,
+            background: "transparent", color: comAviso === total ? GREY : TEAL,
+            cursor: comAviso === total ? "default" : "pointer", opacity: comAviso === total ? 0.6 : 1,
+          }}
+        >
+          Reativar todos
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function IconLabel({ icon: Icon, children }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
@@ -637,6 +676,7 @@ export default function App() {
   const agendaViewsRef = useRef(null);
   const listaRef = useRef(null);
   const [agendaFiltro, setAgendaFiltro] = useState(null); // null | "doses" | "compromissos"
+  const [confirmarAvisos, setConfirmarAvisos] = useState(null); // { tipo, ligar }
   const [saveMsg, setSaveMsg] = useState("");
   const [medSavedMsg, setMedSavedMsg] = useState("");
   const [showDiarioIntro, setShowDiarioIntro] = useState(false);
@@ -738,6 +778,20 @@ export default function App() {
 
   // Remédio encerrado ainda interessa ao veterinário, mas separado do que está
   // em uso hoje.
+  // Quantos dos já cadastrados estão com aviso ligado — a tela de Avisos
+  // precisa dizer sobre o que a ação em massa vai agir.
+  const remediosComAviso = recorrentes.filter(medAvisar).length;
+  const compromissosComAviso = agendaItems.filter(agendaAvisar).length;
+
+  function aplicarAvisoEmMassa(tipo, ligar) {
+    if (tipo === "remedios") {
+      saveRecorrentes(recorrentes.map((m) => ({ ...m, avisar: ligar })));
+    } else {
+      saveAgendaItems(agendaItems.map((it) => ({ ...it, avisar: ligar })));
+    }
+    setConfirmarAvisos(null);
+  }
+
   const tutoresDoManual = tutoresDoPerfil(profile);
   const remedioEncerrado = (m) => m.duracao === "determinado" && m.dataFim && m.dataFim < today;
   const remediosEmUso = recorrentes.filter((m) => !remedioEncerrado(m));
@@ -1008,6 +1062,7 @@ export default function App() {
       jejumHoras: Number(item.jejumHoras) || 8,
       lembretes: normalizeLembretes(item.lembretes),
       concluido: !!item.concluido,
+      avisar: agendaAvisar(item),
     });
     setSheet("compromisso");
   }
@@ -2808,6 +2863,13 @@ export default function App() {
               Compromissos e exames
             </div>
             <LembretesPicker value={notifPrefs} onChange={(l) => saveNotifPrefs({ ...notifPrefs, ...l })} />
+            <AcoesEmMassa
+              total={agendaItems.length}
+              comAviso={compromissosComAviso}
+              rotulo={agendaItems.length === 1 ? "compromisso" : "compromissos"}
+              onDesligar={() => setConfirmarAvisos({ tipo: "compromissos", ligar: false })}
+              onLigar={() => setConfirmarAvisos({ tipo: "compromissos", ligar: true })}
+            />
           </div>
 
           <div style={{ background: "#fff", borderRadius: 16, padding: 18 }}>
@@ -2842,9 +2904,16 @@ export default function App() {
 
             <div style={{ fontSize: 10.5, color: GREY, marginTop: 12, lineHeight: 1.5 }}>
               {notifPrefs.medAvisar
-                ? `Cada remédio novo já vem com esse ajuste, e dá para mudar um por um nos detalhes dele. O aviso de início de jejum${" "}continua saindo sempre que você marcar jejum no remédio.`
+                ? "Cada remédio novo já vem com esse ajuste, e dá para mudar um por um nos detalhes dele."
                 : "Remédios novos vão entrar sem aviso no celular. Você ainda pode ligar um por um nos detalhes de cada remédio."}
             </div>
+            <AcoesEmMassa
+              total={recorrentes.length}
+              comAviso={remediosComAviso}
+              rotulo={recorrentes.length === 1 ? "remédio" : "remédios"}
+              onDesligar={() => setConfirmarAvisos({ tipo: "remedios", ligar: false })}
+              onLigar={() => setConfirmarAvisos({ tipo: "remedios", ligar: true })}
+            />
           </div>
 
           <button
@@ -3047,10 +3116,26 @@ export default function App() {
             <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
               <Bell size={14} color={TEAL} /> Quando avisar
             </div>
-            <LembretesPicker
-              value={novoAgendaItem.lembretes}
-              onChange={(lembretes) => setNovoAgendaItem({ ...novoAgendaItem, lembretes })}
+
+            <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>Receber aviso deste compromisso?</label>
+            <Segmented
+              value={novoAgendaItem.avisar ? "Sim" : "Não"}
+              onChange={(v) => setNovoAgendaItem({ ...novoAgendaItem, avisar: v === "Sim" })}
+              options={["Não", "Sim"]}
             />
+
+            {novoAgendaItem.avisar ? (
+              <div style={{ marginTop: 14 }}>
+                <LembretesPicker
+                  value={novoAgendaItem.lembretes}
+                  onChange={(lembretes) => setNovoAgendaItem({ ...novoAgendaItem, lembretes })}
+                />
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: GREY, marginTop: 10, lineHeight: 1.5 }}>
+                Nenhum aviso deste compromisso vai chegar no celular — nem o da véspera, nem o do jejum.
+              </div>
+            )}
           </div>
 
           <button
@@ -3829,6 +3914,37 @@ export default function App() {
             >
               Entendi
             </button>
+          </div>
+        </div>
+      )}
+
+      {confirmarAvisos && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(35,35,35,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 70 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 26, maxWidth: 360, width: "100%" }}>
+            <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 17, marginBottom: 12 }}>
+              {confirmarAvisos.ligar ? "Reativar todos os avisos?" : "Desativar todos os avisos?"}
+            </div>
+            <div style={{ fontSize: 13, color: INK, lineHeight: 1.6, marginBottom: 18 }}>
+              {confirmarAvisos.ligar
+                ? `Todos os ${confirmarAvisos.tipo === "remedios" ? "remédios" : "compromissos"} já cadastrados voltam a avisar no celular, com a antecedência que cada um tem.`
+                : confirmarAvisos.tipo === "remedios"
+                  ? `Nenhum dos ${recorrentes.length} remédios já cadastrados vai mais avisar no celular — nem na hora da dose, nem para começar o jejum. Eles continuam na agenda para você marcar. Dá para reativar aqui a qualquer momento.`
+                  : `Nenhum dos ${agendaItems.length} compromissos já cadastrados vai mais avisar no celular — nem na véspera, nem no dia. Eles continuam na agenda. Dá para reativar aqui a qualquer momento.`}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => setConfirmarAvisos(null)}
+                style={{ flex: 1, padding: 12, borderRadius: 14, border: `1px solid ${GREY}`, background: "#fff", color: INK, fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => aplicarAvisoEmMassa(confirmarAvisos.tipo, confirmarAvisos.ligar)}
+                style={{ flex: 1, padding: 12, borderRadius: 14, border: "none", background: confirmarAvisos.ligar ? TEAL : TERRACOTTA, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+              >
+                {confirmarAvisos.ligar ? "Reativar" : "Desativar"}
+              </button>
+            </div>
           </div>
         </div>
       )}

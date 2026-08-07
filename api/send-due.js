@@ -183,6 +183,9 @@ export default async function handler(req, res) {
 
     for (const med of recorrentes) {
       if (!medOccursOn(med, today, weekday)) continue;
+      // Desligar o aviso silencia o remédio por completo, inclusive o jejum:
+      // "sem aviso" que ainda toca não é sem aviso.
+      if (!medAvisar(med)) continue;
 
       for (const horario of medHorarios(med)) {
         const medMinutes = parseHorario(horario);
@@ -202,8 +205,6 @@ export default async function handler(req, res) {
           }
         }
 
-        if (!medAvisar(med)) continue;
-
         // A chave não inclui a antecedência de propósito: mudar de "na hora"
         // para "15min antes" no meio do dia não deve render um segundo aviso
         // da mesma dose.
@@ -222,6 +223,7 @@ export default async function handler(req, res) {
 
     for (const item of agendaItems) {
       if (item.concluido) continue;
+      if (item.avisar === false) continue;
 
       const lembretes = normalizeLembretes(item.lembretes);
       const titulo = agendaTitulo(item);

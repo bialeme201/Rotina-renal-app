@@ -220,7 +220,7 @@ function listar(itens) {
 
 // A frase que explica, em português, exatamente o que vai chegar no celular.
 export function explicaAvisoRemedio(med) {
-  if (!medAvisar(med)) return "Você não vai receber aviso no celular para este remédio.";
+  if (!medAvisar(med)) return "Você não vai receber nenhum aviso deste remédio — nem o da dose, nem o do jejum.";
   const horarios = horariosDoAviso(med);
   if (horarios.length === 0) return "Defina o horário acima para o aviso funcionar.";
 
@@ -287,6 +287,12 @@ export function lembretesLabel(lembretes) {
   const ultimo = l.diasAntes[l.diasAntes.length - 1];
   const dias = `${l.diasAntes.slice(0, -1).join(", ")} e ${ultimo}`;
   return `${dias} dias antes, ${hora}`;
+}
+
+// Simétrico ao do remédio: item sem o campo avisa, que era o comportamento
+// antes de ele existir.
+export function agendaAvisar(item) {
+  return item ? item.avisar !== false : true;
 }
 
 export function agendaStatus(item, todayKey) {
