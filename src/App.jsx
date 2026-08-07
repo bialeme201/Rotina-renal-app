@@ -1498,7 +1498,7 @@ export default function App() {
                 {isNormalSelected && <span style={{ color: "#fff", fontSize: 14, fontWeight: 800 }}>✓</span>}
               </div>
               <span style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, color: isNormalSelected ? TEAL : GREY }}>
-                {isNormalSelected ? "Dia marcado como normal — toque para desmarcar" : "Marcar dia como normal"}
+                Marcar dia como normal
               </span>
             </button>
 
