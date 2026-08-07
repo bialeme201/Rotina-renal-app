@@ -1833,7 +1833,7 @@ export default function App() {
                 }}
               >
                 <Filter size={13} strokeWidth={2.4} style={{ flexShrink: 0 }} />
-                <span style={{ flex: 1 }}>Mostrando só {FILTRO_ROTULO[agendaFiltro]}</span>
+                <span style={{ flex: 1 }}>Na lista, só {FILTRO_ROTULO[agendaFiltro]}</span>
                 <span style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, textDecoration: "underline" }}>
                   ver tudo <X size={13} strokeWidth={2.6} />
                 </span>
@@ -1862,7 +1862,6 @@ export default function App() {
                 onToggleMed={(key, medId) => toggleRecorrenteCheck(medId, key)}
                 onWeekChange={(delta) => setWeekStart(addDays(weekStart, delta * 7))}
                 onSelectDay={(k) => { setSelectedDay(k); setCalendarMonth(monthKeyOf(k)); }}
-                filtro={agendaFiltro}
               />
             )}
 
