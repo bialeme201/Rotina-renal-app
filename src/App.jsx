@@ -37,12 +37,12 @@ const EMPTY_AGENDA_ITEM = {
 const EMPTY_RECORRENTE = {
   nome: "", dose: "", doseUnidade: "mg", horarios: [""], frequencia: "24h",
   dias: [0, 1, 2, 3, 4, 5, 6], duracao: "continuo", dataInicio: todayKey(), dataFim: "",
-  jejum: false, jejumMinutos: 60, avisar: true, avisoMinutosAntes: 0,
+  jejum: false, jejumMinutos: 60, avisar: true, avisoMinutosAntes: 0, obs: "",
 };
 
 const HORARIOS_SUGERIDOS = ["07:00", "08:00", "12:00", "18:00", "20:00", "22:00"];
 const TIPOS_SUGERIDOS = ["Consulta", "Exame de sangue", "Exame de urina", "Ultrassom", "Fluidoterapia"];
-const DOSE_UNIDADES = ["mg", "ml"];
+const DOSE_UNIDADES = ["mg", "g", "ml"];
 
 const FREQ_LABEL = { "24h": "24h", "48h": "48h", dias: "Dias fixos" };
 const FREQ_VALUE = { "24h": "24h", "48h": "48h", "Dias fixos": "dias" };
@@ -900,6 +900,7 @@ export default function App() {
       jejumMinutos: Number(med.jejumMinutos) || 60,
       avisar: medAvisar(med),
       avisoMinutosAntes: medAvisoMinutos(med),
+      obs: med.obs || "",
     });
     setSheet("remedio");
   }
@@ -1947,6 +1948,9 @@ export default function App() {
                             jejum de {formatDuration(med.jejumMinutos)} antes
                           </div>
                         )}
+                        {med.obs && (
+                          <div style={{ fontSize: 10.5, color: GREY, fontStyle: "italic", marginTop: 2 }}>{med.obs}</div>
+                        )}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
                         <button
@@ -2842,9 +2846,17 @@ export default function App() {
                 ))}
               </div>
             </div>
-            <div style={{ fontSize: 10.5, color: GREY, marginBottom: 16 }}>
+            <div style={{ fontSize: 10.5, color: GREY, marginBottom: 12 }}>
               Opcional. Conforme a prescrição do seu veterinário — o app só repete o que você anotar.
             </div>
+
+            <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 4 }}>Observação</label>
+            <textarea
+              value={novoRecorrente.obs}
+              onChange={(e) => setNovoRecorrente({ ...novoRecorrente, obs: e.target.value })}
+              placeholder="Ex: meio comprimido, dar junto com a comida..."
+              style={{ width: "100%", minHeight: 46, borderRadius: 12, border: "1px solid rgba(42,42,42,0.08)", padding: 9, fontSize: 13, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box", marginBottom: 16 }}
+            />
 
             <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>
               {novoRecorrente.horarios.length > 1 ? "Horários" : "Horário"}

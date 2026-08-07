@@ -376,6 +376,9 @@ export function DayPanel({
                     )}
                     {late && <Chip color={TERRACOTTA} bg="rgba(196,98,45,0.12)">em atraso</Chip>}
                   </div>
+                  {oc.med.obs && (
+                    <div style={{ fontSize: 10.5, color: GREY, fontStyle: "italic", marginTop: 2 }}>{oc.med.obs}</div>
+                  )}
                 </div>
                 <div style={{ fontSize: 12, fontWeight: 700, color: TERRACOTTA, flexShrink: 0 }}>{oc.horario}</div>
                 <button

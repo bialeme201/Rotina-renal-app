@@ -215,7 +215,7 @@ export default async function handler(req, res) {
           title: antecedencia === 0
             ? `Hora do remédio de ${nome}`
             : `Daqui a ${formatDuration(antecedencia)}: remédio de ${nome}`,
-          body: `${med.nome}${doseLabel(med) ? ` · ${doseLabel(med)}` : ""} · ${horario}${med.jejum ? " · dar em jejum" : ""}`,
+          body: `${med.nome}${doseLabel(med) ? ` · ${doseLabel(med)}` : ""} · ${horario}${med.jejum ? " · dar em jejum" : ""}${med.obs ? ` · ${med.obs}` : ""}`,
         });
       }
     }
