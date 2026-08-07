@@ -497,6 +497,7 @@ export default function App() {
   const [notifPrefs, setNotifPrefs] = useState(DEFAULT_NOTIF_PREFS);
   const [novoExameNome, setNovoExameNome] = useState("");
   const [novoTipoNome, setNovoTipoNome] = useState("");
+  const agendaViewsRef = useRef(null);
   const [saveMsg, setSaveMsg] = useState("");
   const [medSavedMsg, setMedSavedMsg] = useState("");
   const [showDiarioIntro, setShowDiarioIntro] = useState(false);
@@ -976,6 +977,18 @@ export default function App() {
     setSelectedDay(key);
     setCalendarMonth(monthKeyOf(key));
     setWeekStart(startOfWeek(key));
+  }
+
+  // Do resumo para o detalhe: leva à semana daquele dia e rola até lá, porque
+  // o quadro da semana fica abaixo do resumo e a troca passaria despercebida.
+  function abrirNaSemana(key) {
+    goToDay(key);
+    setAgendaView("Semana");
+    requestAnimationFrame(() => {
+      if (agendaViewsRef.current) {
+        agendaViewsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
   }
 
   function flashSaved() {
@@ -1800,10 +1813,10 @@ export default function App() {
               agendaItems={agendaItems}
               recorrentes={recorrentes}
               checks={recorrenteChecks}
-              onSelectDay={goToDay}
+              onAbrirSemana={abrirNaSemana}
             />
 
-            <div style={{ marginBottom: 14 }}>
+            <div ref={agendaViewsRef} style={{ marginBottom: 14, scrollMarginTop: 12 }}>
               <Segmented value={agendaView} onChange={setAgendaView} options={["Semana", "Mês", "Lista"]} />
             </div>
 

@@ -450,8 +450,36 @@ export function DayPanel({
   );
 }
 
+// Quadro do resumo: vira botão quando há o que ver, e continua só informativo
+// quando o número é zero — não há detalhe nenhum para abrir.
+function ResumoTile({ valor, rotulo, cor, fundo, onClick }) {
+  const conteudo = (
+    <>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 4 }}>
+        <div style={{ fontSize: 19, fontWeight: 800, color: cor, fontFamily: "'Poppins', sans-serif", lineHeight: 1.1 }}>
+          {valor}
+        </div>
+        {onClick && <ChevronRight size={15} color={cor} strokeWidth={2.4} style={{ marginTop: 2, flexShrink: 0 }} />}
+      </div>
+      <div style={{ fontSize: 10.5, color: cor, textAlign: "left" }}>{rotulo}</div>
+    </>
+  );
+  const estilo = {
+    flex: "1 1 130px", background: fundo, borderRadius: 12, padding: "10px 12px",
+    border: "none", textAlign: "left", fontFamily: "inherit",
+  };
+  if (!onClick) return <div style={estilo}>{conteudo}</div>;
+  return (
+    <button onClick={onClick} style={{ ...estilo, cursor: "pointer" }}>
+      {conteudo}
+    </button>
+  );
+}
+
 // Cartão de resumo no topo: o que ainda falta hoje e o próximo compromisso.
-export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onSelectDay }) {
+// `onAbrirSemana` leva para a visão da semana, onde cada dose e cada
+// compromisso podem ser marcados um a um.
+export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onAbrirSemana }) {
   const hoje = dayOccurrences(todayKey, agendaItems, recorrentes, checks, todayKey);
   const remediosPendentes = hoje.filter((o) => o.kind === "remedio" && o.status !== "done");
   const compromissosHoje = hoje.filter((o) => o.kind === "compromisso" && !o.item.concluido);
@@ -474,55 +502,62 @@ export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onSel
         <div style={{ fontSize: 12.5, color: GREY }}>Nada marcado para hoje.</div>
       ) : (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: compromissosHoje.length || proximo ? 10 : 0 }}>
-          <div style={{ flex: "1 1 130px", background: "rgba(59,110,100,0.09)", borderRadius: 12, padding: "10px 12px" }}>
-            <div style={{ fontSize: 19, fontWeight: 800, color: TEAL, fontFamily: "'Poppins', sans-serif" }}>
-              {remediosPendentes.length}
-            </div>
-            <div style={{ fontSize: 10.5, color: TEAL }}>
-              {remediosPendentes.length === 1 ? "dose ainda pendente" : "doses ainda pendentes"}
-            </div>
-          </div>
-          <div style={{ flex: "1 1 130px", background: "rgba(196,98,45,0.09)", borderRadius: 12, padding: "10px 12px" }}>
-            <div style={{ fontSize: 19, fontWeight: 800, color: TERRACOTTA, fontFamily: "'Poppins', sans-serif" }}>
-              {compromissosHoje.length}
-            </div>
-            <div style={{ fontSize: 10.5, color: TERRACOTTA }}>
-              {compromissosHoje.length === 1 ? "compromisso hoje" : "compromissos hoje"}
-            </div>
-          </div>
+          <ResumoTile
+            valor={remediosPendentes.length}
+            rotulo={remediosPendentes.length === 1 ? "dose ainda pendente" : "doses ainda pendentes"}
+            cor={TEAL}
+            fundo="rgba(59,110,100,0.09)"
+            onClick={remediosPendentes.length > 0 ? () => onAbrirSemana(todayKey) : undefined}
+          />
+          <ResumoTile
+            valor={compromissosHoje.length}
+            rotulo={compromissosHoje.length === 1 ? "compromisso hoje" : "compromissos hoje"}
+            cor={TERRACOTTA}
+            fundo="rgba(196,98,45,0.09)"
+            onClick={compromissosHoje.length > 0 ? () => onAbrirSemana(todayKey) : undefined}
+          />
         </div>
       )}
 
       {proximo && (
         <button
-          onClick={() => onSelectDay(proximo.data)}
+          onClick={() => onAbrirSemana(proximo.data)}
           style={{
             width: "100%", textAlign: "left", border: "none", background: "rgba(42,42,42,0.04)",
             borderRadius: 12, padding: "10px 12px", cursor: "pointer", marginTop: 4,
           }}
         >
-          <div style={{ fontSize: 10, color: GREY, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>Próximo</div>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: INK, marginTop: 2 }}>
-            {agendaTitulo(proximo)} · {daysUntilLabel(proximo.data, todayKey).toLowerCase()}
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 10, color: GREY, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>Próximo</div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: INK, marginTop: 2 }}>
+                {agendaTitulo(proximo)} · {daysUntilLabel(proximo.data, todayKey).toLowerCase()}
+              </div>
+              {jejumInfo(proximo) && (
+                <div style={{ fontSize: 10.5, color: TERRACOTTA, marginTop: 2 }}>{jejumInfo(proximo).texto}</div>
+              )}
+            </div>
+            <ChevronRight size={16} color={GREY} strokeWidth={2.4} style={{ marginTop: 2, flexShrink: 0 }} />
           </div>
-          {jejumInfo(proximo) && (
-            <div style={{ fontSize: 10.5, color: TERRACOTTA, marginTop: 2 }}>{jejumInfo(proximo).texto}</div>
-          )}
         </button>
       )}
 
       {atrasados.length > 0 && (
         <button
-          onClick={() => onSelectDay(atrasados.sort((a, b) => (a.data > b.data ? 1 : -1))[0].data)}
+          onClick={() => onAbrirSemana(atrasados.slice().sort((a, b) => (a.data > b.data ? 1 : -1))[0].data)}
           style={{
             width: "100%", textAlign: "left", border: "none", background: "rgba(196,98,45,0.10)",
             borderRadius: 12, padding: "10px 12px", cursor: "pointer", marginTop: 8,
             fontSize: 11.5, color: TERRACOTTA, fontWeight: 700,
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6,
           }}
         >
-          {atrasados.length === 1
-            ? "1 compromisso passou da data sem ser marcado como feito"
-            : `${atrasados.length} compromissos passaram da data sem serem marcados como feitos`}
+          <span>
+            {atrasados.length === 1
+              ? "1 compromisso passou da data sem ser marcado como feito"
+              : `${atrasados.length} compromissos passaram da data sem serem marcados como feitos`}
+          </span>
+          <ChevronRight size={16} color={TERRACOTTA} strokeWidth={2.4} style={{ flexShrink: 0 }} />
         </button>
       )}
     </div>
