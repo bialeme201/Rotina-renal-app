@@ -488,7 +488,7 @@ export default function App() {
   const [editingRecorrenteId, setEditingRecorrenteId] = useState(null);
   const [novoRecorrente, setNovoRecorrente] = useState(EMPTY_RECORRENTE);
   // Visões da agenda: mês (calendário), semana (cumprido/atraso) e lista.
-  const [agendaView, setAgendaView] = useState("Mês");
+  const [agendaView, setAgendaView] = useState("Semana");
   const [selectedDay, setSelectedDay] = useState(todayKey());
   const [calendarMonth, setCalendarMonth] = useState(monthKeyOf(todayKey()));
   const [weekStart, setWeekStart] = useState(startOfWeek(todayKey()));
@@ -1799,7 +1799,7 @@ export default function App() {
             />
 
             <div style={{ marginBottom: 14 }}>
-              <Segmented value={agendaView} onChange={setAgendaView} options={["Mês", "Semana", "Lista"]} />
+              <Segmented value={agendaView} onChange={setAgendaView} options={["Semana", "Mês", "Lista"]} />
             </div>
 
             {agendaView === "Mês" && (
