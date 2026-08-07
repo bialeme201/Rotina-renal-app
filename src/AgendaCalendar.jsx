@@ -23,6 +23,20 @@ const cardStyle = {
   boxShadow: "0 20px 40px rgba(0,0,0,0.04)",
 };
 
+// Filtro do resumo: "doses" mostra só as que faltam, "compromissos" só os que
+// ainda não foram marcados como feitos. null mostra tudo.
+export function passaNoFiltro(oc, filtro) {
+  if (!filtro) return true;
+  if (filtro === "doses") return oc.kind === "remedio" && oc.status !== "done";
+  if (filtro === "compromissos") return oc.kind === "compromisso" && !oc.item.concluido;
+  return true;
+}
+
+export const FILTRO_ROTULO = {
+  doses: "doses que faltam",
+  compromissos: "compromissos a fazer",
+};
+
 function Dot({ color, hollow }) {
   return (
     <div style={{
@@ -154,9 +168,23 @@ function StatusCell({ status, onClick, title }) {
 // o que ficou para trás. Dias passados e o dia de hoje podem ser marcados aqui.
 export function WeekOverview({
   weekStartKey, todayKey, recorrentes, agendaItems, checks,
-  onToggleMed, onWeekChange, onSelectDay, selected,
+  onToggleMed, onWeekChange, onSelectDay, selected, filtro,
 }) {
   const dias = weekDays(weekStartKey);
+
+  // Sob filtro, some quem não tem nada pendente na semana à vista.
+  const recorrentesVisiveis = filtro === "compromissos"
+    ? []
+    : filtro === "doses"
+      ? recorrentes.filter((med) => dias.some((d) => ["late", "today"].includes(medStatus(med, d, checks, todayKey))))
+      : recorrentes;
+
+  const mostraCompromissos = filtro !== "doses";
+  const agendaVisiveis = filtro === "compromissos"
+    ? agendaItems.filter((it) => !it.concluido)
+    : agendaItems;
+  const vazioPorFiltro = filtro && recorrentesVisiveis.length === 0
+    && !agendaVisiveis.some((it) => dias.includes(it.data));
   const inicio = parseDateKey(dias[0]).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
   const fim = parseDateKey(dias[6]).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
 
@@ -226,7 +254,7 @@ export function WeekOverview({
           </tr>
         </thead>
         <tbody>
-          {recorrentes.map((med) => (
+          {recorrentesVisiveis.map((med) => (
             <tr key={med.id}>
               <td style={{ paddingRight: 8, paddingTop: 5, paddingBottom: 5, maxWidth: 110 }}>
                 <div style={{ fontSize: 11.5, fontWeight: 700, color: INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -251,13 +279,13 @@ export function WeekOverview({
             </tr>
           ))}
 
-          {agendaItems.some((it) => dias.includes(it.data)) && (
+          {mostraCompromissos && agendaVisiveis.some((it) => dias.includes(it.data)) && (
             <tr>
               <td style={{ paddingRight: 8, paddingTop: 5, paddingBottom: 5 }}>
                 <div style={{ fontSize: 11.5, fontWeight: 700, color: TERRACOTTA, whiteSpace: "nowrap" }}>Compromissos</div>
               </td>
               {dias.map((key) => {
-                const doDia = agendaItems.filter((it) => it.data === key);
+                const doDia = agendaVisiveis.filter((it) => it.data === key);
                 if (doDia.length === 0) {
                   return <td key={key} style={{ textAlign: "center" }}><StatusCell status="none" /></td>;
                 }
@@ -282,9 +310,15 @@ export function WeekOverview({
         </tbody>
       </table>
 
-      {recorrentes.length === 0 && (
+      {recorrentes.length === 0 && !filtro && (
         <div style={{ fontSize: 12, color: GREY, textAlign: "center", padding: "14px 0 4px" }}>
           Nenhum remédio cadastrado ainda.
+        </div>
+      )}
+
+      {vazioPorFiltro && (
+        <div style={{ fontSize: 12, color: TEAL, textAlign: "center", padding: "14px 8px 4px", lineHeight: 1.5 }}>
+          Nada pendente nesta semana. Tire o filtro acima para ver a semana inteira.
         </div>
       )}
 
@@ -295,7 +329,7 @@ export function WeekOverview({
         <span style={{ display: "flex", alignItems: "center", gap: 5 }}><StatusCell status="future" /> previsto</span>
       </div>
 
-      {pendencias.length > 0 && (
+      {pendencias.length > 0 && filtro !== "compromissos" && (
         <div style={{ marginTop: 12, padding: "10px 13px", borderRadius: 12, background: "rgba(196,98,45,0.10)", fontSize: 11.5, color: TERRACOTTA }}>
           {pendencias.length === 1
             ? `1 dose ficou sem marcação nesta semana: ${pendencias[0].med.nome} em ${parseDateKey(pendencias[0].key).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}.`
@@ -320,10 +354,12 @@ function Chip({ children, color, bg }) {
 // Painel do dia selecionado — a lista do que acontece naquele dia, em ordem
 // de horário, com as ações rápidas de cada item.
 export function DayPanel({
-  dayKey, todayKey, agendaItems, recorrentes, checks,
+  dayKey, todayKey, agendaItems, recorrentes, checks, filtro,
   onToggleMed, onEditCompromisso, onToggleCompromisso, onEditMed, onAddCompromisso, onAddMed,
 }) {
-  const ocorrencias = dayOccurrences(dayKey, agendaItems, recorrentes, checks, todayKey);
+  const todas = dayOccurrences(dayKey, agendaItems, recorrentes, checks, todayKey);
+  const ocorrencias = todas.filter((oc) => passaNoFiltro(oc, filtro));
+  const escondidas = todas.length - ocorrencias.length;
   const relativo = daysUntilLabel(dayKey, todayKey);
 
   return (
@@ -337,7 +373,9 @@ export function DayPanel({
 
       {ocorrencias.length === 0 ? (
         <div style={{ fontSize: 12.5, color: GREY, padding: "6px 0 12px" }}>
-          Nada marcado para este dia.
+          {filtro && todas.length > 0
+            ? `Nada pendente neste dia — ${todas.length} ${todas.length === 1 ? "item já resolvido" : "itens já resolvidos"}. Tire o filtro acima para ver.`
+            : "Nada marcado para este dia."}
         </div>
       ) : (
         ocorrencias.map((oc) => {
@@ -432,6 +470,12 @@ export function DayPanel({
         })
       )}
 
+      {filtro && escondidas > 0 && ocorrencias.length > 0 && (
+        <div style={{ fontSize: 10.5, color: GREY, fontStyle: "italic", marginTop: 10 }}>
+          {escondidas === 1 ? "1 item escondido pelo filtro" : `${escondidas} itens escondidos pelo filtro`}.
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <button
           onClick={() => onAddCompromisso(dayKey)}
@@ -515,14 +559,14 @@ export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onAbr
             }
             cor={remediosPendentes.length > 0 ? STATUS_STYLE.late.fg : TEAL}
             fundo={remediosPendentes.length > 0 ? STATUS_STYLE.late.bg : "rgba(59,110,100,0.09)"}
-            onClick={remediosPendentes.length > 0 ? () => onAbrirSemana(todayKey) : undefined}
+            onClick={remediosPendentes.length > 0 ? () => onAbrirSemana(todayKey, "doses") : undefined}
           />
           <ResumoTile
             valor={compromissosHoje.length}
             rotulo={compromissosHoje.length === 1 ? "compromisso hoje" : "compromissos hoje"}
             cor={compromissosHoje.length > 0 ? STATUS_STYLE.late.fg : GREY}
             fundo={compromissosHoje.length > 0 ? STATUS_STYLE.late.bg : "rgba(42,42,42,0.05)"}
-            onClick={compromissosHoje.length > 0 ? () => onAbrirSemana(todayKey) : undefined}
+            onClick={compromissosHoje.length > 0 ? () => onAbrirSemana(todayKey, "compromissos") : undefined}
           />
         </div>
       )}

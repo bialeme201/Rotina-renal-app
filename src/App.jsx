@@ -3,7 +3,7 @@ import { BarChart, Bar, LineChart, Line, ReferenceLine, XAxis, YAxis, Tooltip, R
 import {
   HeartPulse, BookOpen, FolderOpen,
   Droplet, UtensilsCrossed, Smile, Waves, Syringe, Palette, Cat,
-  ExternalLink, Info, Stethoscope, Calendar, Plus, X, Bell, ChevronRight,
+  ExternalLink, Info, Stethoscope, Calendar, Plus, X, Bell, ChevronRight, Filter,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
@@ -11,7 +11,7 @@ import { subscribeToPush, syncSchedule, getPushStatus, pushSupported } from "./p
 import { getStorageEstimate } from "./storage.js";
 import { track } from "@vercel/analytics/react";
 import { TEAL, TERRACOTTA, INK, CREAM, SAND, GREY } from "./theme.js";
-import { MonthCalendar, WeekOverview, DayPanel, TodaySummary } from "./AgendaCalendar.jsx";
+import { MonthCalendar, WeekOverview, DayPanel, TodaySummary, FILTRO_ROTULO } from "./AgendaCalendar.jsx";
 import {
   dateKeyFromDate, addDays, addMonths, startOfWeek, monthKeyOf, medOccursOn, medStatus,
   medHorarios, medFrequencia, medFrequenciaLabel, medCheckKey, agendaStatus, agendaTitulo,
@@ -498,6 +498,7 @@ export default function App() {
   const [novoExameNome, setNovoExameNome] = useState("");
   const [novoTipoNome, setNovoTipoNome] = useState("");
   const agendaViewsRef = useRef(null);
+  const [agendaFiltro, setAgendaFiltro] = useState(null); // null | "doses" | "compromissos"
   const [saveMsg, setSaveMsg] = useState("");
   const [medSavedMsg, setMedSavedMsg] = useState("");
   const [showDiarioIntro, setShowDiarioIntro] = useState(false);
@@ -981,9 +982,10 @@ export default function App() {
 
   // Do resumo para o detalhe: leva à semana daquele dia e rola até lá, porque
   // o quadro da semana fica abaixo do resumo e a troca passaria despercebida.
-  function abrirNaSemana(key) {
+  function abrirNaSemana(key, filtro) {
     goToDay(key);
     setAgendaView("Semana");
+    setAgendaFiltro(filtro || null);
     requestAnimationFrame(() => {
       if (agendaViewsRef.current) {
         agendaViewsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1816,9 +1818,27 @@ export default function App() {
               onAbrirSemana={abrirNaSemana}
             />
 
-            <div ref={agendaViewsRef} style={{ marginBottom: 14, scrollMarginTop: 12 }}>
+            <div ref={agendaViewsRef} style={{ marginBottom: agendaFiltro ? 10 : 14, scrollMarginTop: 12 }}>
               <Segmented value={agendaView} onChange={setAgendaView} options={["Semana", "Mês", "Lista"]} />
             </div>
+
+            {agendaFiltro && (
+              <button
+                onClick={() => setAgendaFiltro(null)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, width: "100%", marginBottom: 14,
+                  padding: "9px 12px", borderRadius: 12, cursor: "pointer",
+                  border: `1px solid rgba(196,98,45,0.3)`, background: "rgba(196,98,45,0.10)",
+                  color: TERRACOTTA, fontFamily: "inherit", fontSize: 11.5, fontWeight: 700, textAlign: "left",
+                }}
+              >
+                <Filter size={13} strokeWidth={2.4} style={{ flexShrink: 0 }} />
+                <span style={{ flex: 1 }}>Mostrando só {FILTRO_ROTULO[agendaFiltro]}</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, textDecoration: "underline" }}>
+                  ver tudo <X size={13} strokeWidth={2.6} />
+                </span>
+              </button>
+            )}
 
             {agendaView === "Mês" && (
               <MonthCalendar
@@ -1842,6 +1862,7 @@ export default function App() {
                 onToggleMed={(key, medId) => toggleRecorrenteCheck(medId, key)}
                 onWeekChange={(delta) => setWeekStart(addDays(weekStart, delta * 7))}
                 onSelectDay={(k) => { setSelectedDay(k); setCalendarMonth(monthKeyOf(k)); }}
+                filtro={agendaFiltro}
               />
             )}
 
@@ -1852,6 +1873,7 @@ export default function App() {
                 agendaItems={agendaItems}
                 recorrentes={recorrentes}
                 checks={recorrenteChecks}
+                filtro={agendaFiltro}
                 onToggleMed={(key, medId) => toggleRecorrenteCheck(medId, key)}
                 onToggleCompromisso={toggleAgendaConcluido}
                 onEditCompromisso={startEditAgendaItem}
@@ -1863,7 +1885,7 @@ export default function App() {
 
             {agendaView === "Lista" && (
               <>
-                {agendaItems.length === 0 ? (
+                {agendaFiltro === "doses" ? null : agendaItems.length === 0 ? (
                   <div style={{ fontSize: 12.5, color: GREY, textAlign: "center", padding: "20px 0" }}>
                     Nada agendado ainda. Toque no + para incluir o primeiro compromisso.
                   </div>
@@ -1872,7 +1894,8 @@ export default function App() {
                     ["Em atraso", agendaGroups.late],
                     ["Hoje", agendaGroups.today],
                     ["Próximos", agendaGroups.future],
-                    ["Já concluídos", agendaGroups.done],
+                    // sob o filtro de compromissos, o que já foi feito sai da lista
+                    ...(agendaFiltro === "compromissos" ? [] : [["Já concluídos", agendaGroups.done]]),
                   ].map(([titulo, itens]) => (
                     itens.length === 0 ? null : (
                       <div key={titulo} style={{ marginBottom: 16 }}>
@@ -1943,6 +1966,8 @@ export default function App() {
                   ))
                 )}
 
+                {agendaFiltro !== "compromissos" && (
+                  <>
                 <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase", color: TEAL, margin: "20px 0 8px" }}>
                   Remédios cadastrados
                 </div>
@@ -1987,6 +2012,8 @@ export default function App() {
                       </div>
                     </div>
                   ))
+                )}
+                  </>
                 )}
               </>
             )}
