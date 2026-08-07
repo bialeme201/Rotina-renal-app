@@ -428,6 +428,31 @@ function ResumoCampo({ config, valor }) {
   );
 }
 
+// Linha da medicação no resumo do veterinário: tudo que foi prescrito e como
+// está sendo dado, numa linha só.
+function linhaRemedio(med) {
+  const partes = [];
+  if (doseLabel(med)) partes.push(doseLabel(med));
+  const horarios = medHorarios(med);
+  if (horarios.length) partes.push(horarios.join(", "));
+  partes.push(medFrequenciaLabel(med));
+  if (med.jejum) partes.push(`jejum de ${formatDuration(med.jejumMinutos)} antes`);
+  if (med.obs) partes.push(med.obs);
+  return partes.join(" · ");
+}
+
+// Só cita o que foi respondido — um dia pode existir apenas por uma anotação.
+function linhaRelatorio(e) {
+  const partes = [];
+  if (e.agua) partes.push(`água ${e.agua.toLowerCase()}`);
+  if (e.apetite) partes.push(`apetite ${e.apetite.toLowerCase()}`);
+  if (e.humor) partes.push(`humor ${e.humor.toLowerCase()}`);
+  if (e.urina) partes.push(`urina ${e.urina.toLowerCase()}`);
+  if (e.corUrina && e.corUrina !== "Normal") partes.push(`cor da urina: ${e.corUrina.toLowerCase()}`);
+  if (e.soro === "Fiz") partes.push("soro: feito");
+  return partes.join(", ") || "sem observações";
+}
+
 // Linha do histórico: só cita o que foi de fato respondido, porque um dia
 // pode existir apenas por causa de uma anotação.
 function resumoDoDia(e) {
@@ -692,6 +717,12 @@ export default function App() {
   const entryExiste = Boolean(entries[selectedDiaryDate]);
   const selectedEntry = entries[selectedDiaryDate] || { agua: "", apetite: "", humor: "", urina: "", corUrina: "", soro: "Não fiz", nota: "" };
   const isEditingToday = selectedDiaryDate === today;
+
+  // Remédio encerrado ainda interessa ao veterinário, mas separado do que está
+  // em uso hoje.
+  const remedioEncerrado = (m) => m.duracao === "determinado" && m.dataFim && m.dataFim < today;
+  const remediosEmUso = recorrentes.filter((m) => !remedioEncerrado(m));
+  const remediosEncerrados = recorrentes.filter(remedioEncerrado);
 
   const agendaGroups = { late: [], today: [], future: [], done: [] };
   sortedAgenda.forEach((it) => agendaGroups[agendaStatus(it, today)].push(it));
@@ -3558,16 +3589,30 @@ export default function App() {
               </div>
               <div style={{ fontSize: 11.5, color: GREY, marginBottom: 16 }}>Últimos 30 dias · gerado em {new Date().toLocaleDateString("pt-BR")}</div>
 
-              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, marginBottom: 6 }}>Diário ({sortedDates.length} registros no total)</div>
+              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, marginBottom: 6 }}>Medicação em uso</div>
+              {remediosEmUso.length === 0 && <div style={{ fontSize: 12, color: GREY, marginBottom: 6 }}>Nenhum remédio cadastrado.</div>}
+              {remediosEmUso.map((med) => (
+                <div key={med.id} style={{ fontSize: 11.5, color: INK, marginBottom: 3 }}>
+                  <strong>{med.nome}</strong> — {linhaRemedio(med)}
+                  {med.duracao === "determinado" && med.dataFim
+                    ? ` (até ${new Date(med.dataFim + "T12:00:00").toLocaleDateString("pt-BR")})`
+                    : ""}
+                </div>
+              ))}
+              {remediosEncerrados.length > 0 && (
+                <div style={{ fontSize: 11, color: GREY, marginTop: 6 }}>
+                  Encerrados: {remediosEncerrados.map((m) => `${m.nome} (até ${new Date(m.dataFim + "T12:00:00").toLocaleDateString("pt-BR")})`).join("; ")}
+                </div>
+              )}
+
+              <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, margin: "16px 0 6px" }}>Diário ({sortedDates.length} registros no total)</div>
               {sortedDates.slice(0, 30).length === 0 && <div style={{ fontSize: 12, color: GREY, marginBottom: 14 }}>Nenhum registro ainda.</div>}
               {sortedDates.slice(0, 30).map((date) => {
                 const e = entries[date];
                 return (
                   <div key={date} style={{ fontSize: 11.5, color: INK, marginBottom: 3 }}>
                     <strong>{new Date(date + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}:</strong>{" "}
-                    água {e.agua.toLowerCase()}, apetite {e.apetite.toLowerCase()}, humor {e.humor.toLowerCase()}, urina {e.urina.toLowerCase()}
-                    {e.corUrina && e.corUrina !== "Normal" ? `, cor da urina: ${e.corUrina.toLowerCase()}` : ""}
-                    {e.soro === "Fiz" ? ", soro: feito" : ""}
+                    {linhaRelatorio(e)}
                     {e.nota ? ` — "${e.nota}"` : ""}
                   </div>
                 );
@@ -3589,9 +3634,13 @@ export default function App() {
             <a
               href={buildWhatsAppLink(
                 `Resumo — ${profile && profile.nome ? profile.nome : "meu gato"}\nÚltimos 30 dias · gerado em ${new Date().toLocaleDateString("pt-BR")}\n\n` +
+                (remediosEmUso.length > 0
+                  ? `Medicação em uso:\n` + remediosEmUso.map((med) => `- ${med.nome} — ${linhaRemedio(med)}`).join("\n") + `\n\n`
+                  : "") +
+                `Diário:\n` +
                 sortedDates.slice(0, 30).map((date) => {
                   const e = entries[date];
-                  return `${new Date(date + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}: água ${e.agua.toLowerCase()}, apetite ${e.apetite.toLowerCase()}, humor ${e.humor.toLowerCase()}${e.corUrina && e.corUrina !== "Normal" ? `, urina: ${e.corUrina.toLowerCase()}` : ""}`;
+                  return `${new Date(date + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}: ${linhaRelatorio(e)}`;
                 }).join("\n") +
                 (exames.length > 0 ? `\n\nExames:\n` + exames.slice(0, 15).map((ex) => `${ex.data ? new Date(ex.data + "T12:00:00").toLocaleDateString("pt-BR") : ""}: ${ex.tipo}${ex.valor ? ` — ${ex.valor}` : ""}`).join("\n") : ""),
                 profile && profile.vetTelefone
