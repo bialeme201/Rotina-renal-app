@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, Check, AlertCircle } from "lucide-react";
-import { TEAL, TERRACOTTA, INK, GREY, AMBER } from "./theme.js";
+import { TEAL, TERRACOTTA, INK, GREY } from "./theme.js";
 import {
   WEEKDAY_LETTERS, monthGrid, monthKeyOf, formatMonthLabel, parseDateKey,
   weekDays, medStatus, medHorarios, medFrequenciaLabel, doseLabel, agendaStatus,
@@ -502,9 +502,10 @@ export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onAbr
         <div style={{ fontSize: 12.5, color: GREY }}>Nada marcado para hoje.</div>
       ) : (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: compromissosHoje.length || proximo ? 10 : 0 }}>
-          {/* A cor diz o estado, não a categoria: âmbar enquanto falta dose,
-              verde só quando não falta mais nenhuma. Compromisso zerado fica
-              neutro — não ter nada marcado não é conquista nem alerta. */}
+          {/* Falta fazer usa exatamente o estilo de "em atraso" do quadro da
+              semana — mesma constante, para as duas telas não divergirem.
+              Zerado: verde quando é conquista (todas as doses dadas), neutro
+              quando é só ausência (nenhum compromisso marcado). */}
           <ResumoTile
             valor={remediosPendentes.length}
             rotulo={
@@ -512,15 +513,15 @@ export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onAbr
                 ? "todas as doses de hoje dadas"
                 : remediosPendentes.length === 1 ? "dose ainda pendente" : "doses ainda pendentes"
             }
-            cor={remediosPendentes.length > 0 ? AMBER : TEAL}
-            fundo={remediosPendentes.length > 0 ? "rgba(196,146,45,0.14)" : "rgba(59,110,100,0.09)"}
+            cor={remediosPendentes.length > 0 ? STATUS_STYLE.late.fg : TEAL}
+            fundo={remediosPendentes.length > 0 ? STATUS_STYLE.late.bg : "rgba(59,110,100,0.09)"}
             onClick={remediosPendentes.length > 0 ? () => onAbrirSemana(todayKey) : undefined}
           />
           <ResumoTile
             valor={compromissosHoje.length}
             rotulo={compromissosHoje.length === 1 ? "compromisso hoje" : "compromissos hoje"}
-            cor={compromissosHoje.length > 0 ? TERRACOTTA : GREY}
-            fundo={compromissosHoje.length > 0 ? "rgba(196,98,45,0.09)" : "rgba(42,42,42,0.05)"}
+            cor={compromissosHoje.length > 0 ? STATUS_STYLE.late.fg : GREY}
+            fundo={compromissosHoje.length > 0 ? STATUS_STYLE.late.bg : "rgba(42,42,42,0.05)"}
             onClick={compromissosHoje.length > 0 ? () => onAbrirSemana(todayKey) : undefined}
           />
         </div>
