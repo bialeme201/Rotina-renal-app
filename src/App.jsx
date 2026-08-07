@@ -428,20 +428,22 @@ function ResumoCampo({ config, valor }) {
   );
 }
 
-// Perfis salvos antes desta versão não têm a lista; o contato de emergência
-// solto vira o primeiro tutor para nada se perder.
-function tutoresDoPerfil(profile) {
-  if (!profile) return [];
-  if (Array.isArray(profile.tutores)) {
-    const validos = profile.tutores.filter((t) => t && (t.nome || t.telefone));
-    if (validos.length) return validos;
-  }
-  if (profile.contatoEmergencia) return [{ nome: profile.contatoEmergencia, telefone: "" }];
-  return [];
-}
-
 function tutorTexto(t) {
   return [t.nome, t.telefone].filter(Boolean).join(" — ");
+}
+
+// O contato de emergência era um campo à parte, mas é a mesma pessoa que o
+// tutor. Perfis antigos trazem ele solto: entra na lista se ainda não estiver.
+function tutoresDoPerfil(profile) {
+  if (!profile) return [];
+  const lista = Array.isArray(profile.tutores)
+    ? profile.tutores.filter((t) => t && (t.nome || t.telefone))
+    : [];
+  const antigo = profile.contatoEmergencia;
+  if (antigo && !lista.some((t) => tutorTexto(t) === antigo || t.nome === antigo)) {
+    lista.push({ nome: antigo, telefone: "" });
+  }
+  return lista;
 }
 
 // Linha da medicação no resumo do veterinário: tudo que foi prescrito e como
@@ -641,7 +643,7 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
-  const [draftProfile, setDraftProfile] = useState({ nome: "", idade: "", dataDiagnostico: "", estagio: "", vetNome: "", vetTelefone: "", observacoes: "", contatoEmergencia: "", tutores: [{ nome: "", telefone: "" }] });
+  const [draftProfile, setDraftProfile] = useState({ nome: "", idade: "", dataDiagnostico: "", estagio: "", vetNome: "", vetTelefone: "", observacoes: "", tutores: [{ nome: "", telefone: "" }] });
   const [showReport, setShowReport] = useState(false);
   const [showManual, setShowManual] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(null);
@@ -1410,6 +1412,7 @@ export default function App() {
                 const tutores = tutoresDoPerfil(profile);
                 setDraftProfile({
                   ...profile,
+                  contatoEmergencia: "",
                   observacoes: profile.observacoes || profile.rotinaHorarios || "",
                   tutores: tutores.length ? tutores : [{ nome: "", telefone: "" }],
                 });
@@ -3555,17 +3558,9 @@ export default function App() {
                   style={{ width: "100%", padding: 8, borderRadius: 13, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13.5, marginBottom: 10 }}
                 />
 
-                <label style={{ fontSize: 12, fontWeight: 700, color: TEAL, display: "block", marginBottom: 4 }}>Contato de emergência</label>
-                <input
-                  value={draftProfile.contatoEmergencia}
-                  onChange={(e) => setDraftProfile({ ...draftProfile, contatoEmergencia: e.target.value })}
-                  placeholder="Ex: Hospital 24h — (11) 98888-8888"
-                  style={{ width: "100%", padding: 8, borderRadius: 13, border: "1px solid rgba(42,42,42,0.08)", fontSize: 13.5, marginBottom: 14 }}
-                />
-
-                <label style={{ fontSize: 12, fontWeight: 700, color: TEAL, display: "block", marginBottom: 2 }}>Tutores</label>
+                <label style={{ fontSize: 12, fontWeight: 700, color: TEAL, display: "block", marginBottom: 2 }}>Tutores — quem chamar</label>
                 <div style={{ fontSize: 10.5, color: GREY, marginBottom: 8 }}>
-                  Quem estiver com o gato deve procurar por eles. Dá para incluir mais de uma pessoa.
+                  Quem estiver com o gato liga para eles em qualquer dúvida ou emergência. Dá para incluir mais de uma pessoa.
                 </div>
                 {(draftProfile.tutores || []).map((t, i) => (
                   <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "center" }}>
@@ -3753,9 +3748,10 @@ export default function App() {
               <div style={{ fontSize: 11.5, color: GREY, marginBottom: 18 }}>Folha única para deixar com quem cuidar dele</div>
 
               <div style={{ marginBottom: 14 }}>
-                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, marginBottom: 4 }}>
+                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, marginBottom: 1 }}>
                   {tutoresDoManual.length > 1 ? "Tutores" : "Tutor"}
                 </div>
+                <div style={{ fontSize: 10.5, color: GREY, marginBottom: 4 }}>Ligue em qualquer dúvida ou emergência</div>
                 {tutoresDoManual.length === 0 ? (
                   <div style={{ fontSize: 13, color: GREY }}>Não informado — edite o perfil para adicionar.</div>
                 ) : (
@@ -3769,13 +3765,6 @@ export default function App() {
                 <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, marginBottom: 4 }}>Veterinário</div>
                 <div style={{ fontSize: 13, color: INK }}>
                   {(profile && profile.vetNome) || "Não informado"}{profile && profile.vetTelefone ? ` — ${profile.vetTelefone}` : ""}
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 12.5, color: TEAL, marginBottom: 4 }}>Contato de emergência</div>
-                <div style={{ fontSize: 13, color: INK }}>
-                  {(profile && profile.contatoEmergencia) || "Não informado"}
                 </div>
               </div>
 
@@ -3796,7 +3785,6 @@ export default function App() {
                 `Manual do Tutor — ${profile && profile.nome ? profile.nome : "meu gato"}\n\n` +
                 `${tutoresDoManual.length > 1 ? "Tutores" : "Tutor"}:\n${tutoresDoManual.length ? tutoresDoManual.map((t) => `- ${tutorTexto(t)}`).join("\n") : "Não informado"}\n\n` +
                 `Veterinário: ${(profile && profile.vetNome) || "Não informado"}${profile && profile.vetTelefone ? ` — ${profile.vetTelefone}` : ""}\n\n` +
-                `Contato de emergência: ${(profile && profile.contatoEmergencia) || "Não informado"}\n\n` +
                 `Observações:\n${(profile && profile.observacoes) || "Nada anotado"}`
               )}
               target="_blank"
