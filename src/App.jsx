@@ -16,7 +16,7 @@ import {
   dateKeyFromDate, addDays, addMonths, startOfWeek, monthKeyOf, medOccursOn, medStatus,
   medHorarios, medFrequencia, medFrequenciaLabel, medCheckKey, agendaStatus, agendaTitulo,
   agendaExames, agendaTipos, doseLabel, medAvisar, medAvisoMinutos, avisoLabel,
-  explicaAvisoRemedio, AVISO_MED_OPCOES,
+  explicaAvisoRemedio, AVISO_MED_OPCOES, normalizeNotifPrefs, DEFAULT_NOTIF_PREFS,
   jejumInfo, daysUntilLabel as agendaDaysUntilLabel, normalizeLembretes,
   lembretesLabel, formatDuration, WEEKDAY_SHORT,
   DEFAULT_LEMBRETES, DIAS_ANTES_OPCOES, MINUTOS_ANTES_OPCOES,
@@ -494,7 +494,7 @@ export default function App() {
   const [weekStart, setWeekStart] = useState(startOfWeek(todayKey()));
   const [sheet, setSheet] = useState(null); // null | "menu" | "compromisso" | "remedio" | "notif"
   const [detalhesAbertos, setDetalhesAbertos] = useState(false);
-  const [notifPrefs, setNotifPrefs] = useState(DEFAULT_LEMBRETES);
+  const [notifPrefs, setNotifPrefs] = useState(DEFAULT_NOTIF_PREFS);
   const [novoExameNome, setNovoExameNome] = useState("");
   const [novoTipoNome, setNovoTipoNome] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
@@ -661,7 +661,7 @@ export default function App() {
       } catch (err) {}
       try {
         const np = await window.storage.get("notif-prefs-data");
-        if (np) setNotifPrefs(normalizeLembretes(JSON.parse(np.value)));
+        if (np) setNotifPrefs(normalizeNotifPrefs(JSON.parse(np.value)));
       } catch (err) {}
       try {
         const p = await window.storage.get("profile-data");
@@ -831,7 +831,7 @@ export default function App() {
   }
 
   async function saveNotifPrefs(next) {
-    const normalized = normalizeLembretes(next);
+    const normalized = normalizeNotifPrefs(next);
     setNotifPrefs(normalized);
     await persist("notif-prefs-data", JSON.stringify(normalized));
   }
@@ -840,7 +840,7 @@ export default function App() {
     setEditingAgendaId(null);
     setNovoExameNome("");
     setNovoTipoNome("");
-    setNovoAgendaItem({ ...EMPTY_AGENDA_ITEM, data: dataKey || selectedDay, lembretes: notifPrefs });
+    setNovoAgendaItem({ ...EMPTY_AGENDA_ITEM, data: dataKey || selectedDay, lembretes: normalizeLembretes(notifPrefs) });
     setSheet("compromisso");
   }
 
@@ -880,7 +880,12 @@ export default function App() {
 
   function openNovoRemedio(dataKey) {
     setEditingRecorrenteId(null);
-    setNovoRecorrente({ ...EMPTY_RECORRENTE, dataInicio: dataKey || todayKey() });
+    setNovoRecorrente({
+      ...EMPTY_RECORRENTE,
+      dataInicio: dataKey || todayKey(),
+      avisar: notifPrefs.medAvisar,
+      avisoMinutosAntes: notifPrefs.medMinutosAntes,
+    });
     setSheet("remedio");
   }
 
@@ -2544,13 +2549,54 @@ export default function App() {
 
       {sheet === "notif" && (
         <Sheet
-          title="Avisos dos compromissos"
-          subtitle="Isso vale para os próximos compromissos que você criar. Cada compromisso já cadastrado guarda o ajuste dele."
+          title="Avisos"
+          subtitle="Isso vale para os próximos cadastros. O que já está na agenda guarda o ajuste que você escolheu na hora."
           onClose={() => setSheet(null)}
         >
-          <div style={{ background: "#fff", borderRadius: 16, padding: 18 }}>
-            <LembretesPicker value={notifPrefs} onChange={saveNotifPrefs} />
+          <div style={{ background: "#fff", borderRadius: 16, padding: 18, marginBottom: 12 }}>
+            <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 12, color: TERRACOTTA }}>
+              Compromissos e exames
+            </div>
+            <LembretesPicker value={notifPrefs} onChange={(l) => saveNotifPrefs({ ...notifPrefs, ...l })} />
           </div>
+
+          <div style={{ background: "#fff", borderRadius: 16, padding: 18 }}>
+            <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, marginBottom: 12, color: TEAL }}>
+              Remédios
+            </div>
+
+            <label style={{ fontSize: 12, color: GREY, display: "block", marginBottom: 6 }}>Avisar na hora da dose?</label>
+            <Segmented
+              value={notifPrefs.medAvisar ? "Sim" : "Não"}
+              onChange={(v) => saveNotifPrefs({ ...notifPrefs, medAvisar: v === "Sim" })}
+              options={["Não", "Sim"]}
+            />
+
+            {notifPrefs.medAvisar && (
+              <>
+                <label style={{ fontSize: 12, color: GREY, display: "block", margin: "14px 0 6px" }}>Com quanta antecedência</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {AVISO_MED_OPCOES.map((m) => (
+                    <ChipToggle
+                      key={m}
+                      active={Number(notifPrefs.medMinutosAntes) === m}
+                      color={TEAL}
+                      onClick={() => saveNotifPrefs({ ...notifPrefs, medMinutosAntes: m })}
+                    >
+                      {m === 0 ? "Na hora" : `${formatDuration(m)} antes`}
+                    </ChipToggle>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div style={{ fontSize: 10.5, color: GREY, marginTop: 12, lineHeight: 1.5 }}>
+              {notifPrefs.medAvisar
+                ? `Cada remédio novo já vem com esse ajuste, e dá para mudar um por um nos detalhes dele. O aviso de início de jejum${" "}continua saindo sempre que você marcar jejum no remédio.`
+                : "Remédios novos vão entrar sem aviso no celular. Você ainda pode ligar um por um nos detalhes de cada remédio."}
+            </div>
+          </div>
+
           <button
             onClick={() => setSheet(null)}
             style={{ width: "100%", padding: 12, borderRadius: 14, border: "none", background: TEAL, color: "#fff", fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 14 }}

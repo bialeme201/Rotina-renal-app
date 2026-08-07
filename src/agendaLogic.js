@@ -12,6 +12,20 @@ export const JEJUM_MINUTOS_MED_OPCOES = [30, 60, 120];
 
 export const DEFAULT_LEMBRETES = { diasAntes: [1], minutosAntes: 60 };
 
+// Padrões aplicados aos próximos cadastros. Guarda os dois tipos de aviso:
+// o do compromisso (dias e antecedência) e o do remédio.
+export const DEFAULT_NOTIF_PREFS = { ...DEFAULT_LEMBRETES, medAvisar: true, medMinutosAntes: 0 };
+
+export function normalizeNotifPrefs(prefs) {
+  const base = prefs || {};
+  const minutos = Number(base.medMinutosAntes);
+  return {
+    ...normalizeLembretes(base),
+    medAvisar: base.medAvisar !== false,
+    medMinutosAntes: Number.isFinite(minutos) && minutos > 0 ? minutos : 0,
+  };
+}
+
 export function normalizeLembretes(lembretes) {
   const base = lembretes || {};
   const dias = Array.isArray(base.diasAntes)
