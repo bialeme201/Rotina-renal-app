@@ -1004,19 +1004,31 @@ export default function App() {
     setWeekStart(startOfWeek(key));
   }
 
+  // Escolher um dia no calendário não muda nada acima da dobra: sem levar a
+  // pessoa até a listagem, a escolha parece não ter feito efeito. Posiciona o
+  // topo da lista a pouco menos da metade da tela, de modo que o calendário
+  // continue visível acima — senão trocar de dia obrigaria a rolar de volta.
+  function rolarAteLista() {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const el = listaRef.current;
+      if (!el) return;
+      const alvo = window.scrollY + el.getBoundingClientRect().top - window.innerHeight * 0.42;
+      window.scrollTo({ top: Math.max(0, alvo), behavior: "smooth" });
+    }));
+  }
+
+  function selecionarDia(key) {
+    goToDay(key);
+    rolarAteLista();
+  }
+
   // Do resumo para o detalhe: leva à semana daquele dia e rola até lá, porque
   // o quadro da semana fica abaixo do resumo e a troca passaria despercebida.
   function abrirNaSemana(key, filtro) {
     goToDay(key);
     setAgendaView("Semana");
     setAgendaFiltro(filtro || null);
-    // Com filtro o destino é a listagem, que é onde ele age e onde está a
-    // faixa para desfazê-lo. Sem filtro basta trazer o calendário à vista.
-    // Dois quadros para o alvo já existir quando a rolagem começa.
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      const alvo = (filtro ? listaRef.current : agendaViewsRef.current) || agendaViewsRef.current;
-      if (alvo) alvo.scrollIntoView({ behavior: "smooth", block: "start" });
-    }));
+    rolarAteLista();
   }
 
   function flashSaved() {
@@ -1854,7 +1866,7 @@ export default function App() {
                 selected={selectedDay}
                 todayKey={today}
                 marksFor={marksForDay}
-                onSelect={(k) => { setSelectedDay(k); setWeekStart(startOfWeek(k)); setCalendarMonth(monthKeyOf(k)); }}
+                onSelect={selecionarDia}
                 onMonthChange={(delta) => setCalendarMonth(addMonths(calendarMonth, delta))}
               />
             )}
@@ -1869,7 +1881,7 @@ export default function App() {
                 selected={selectedDay}
                 onToggleMed={(key, medId) => toggleRecorrenteCheck(medId, key)}
                 onWeekChange={(delta) => setWeekStart(addDays(weekStart, delta * 7))}
-                onSelectDay={(k) => { setSelectedDay(k); setCalendarMonth(monthKeyOf(k)); }}
+                onSelectDay={selecionarDia}
               />
             )}
 
