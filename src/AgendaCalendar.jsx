@@ -511,9 +511,9 @@ function ResumoTile({ valor, rotulo, cor, fundo, onClick }) {
 }
 
 // Cartão de resumo no topo: o que ainda falta hoje e o próximo compromisso.
-// `onAbrirSemana` leva para a visão da semana, onde cada dose e cada
+// `onAbrirLista` leva para a visão da semana, onde cada dose e cada
 // compromisso podem ser marcados um a um.
-export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onAbrirSemana }) {
+export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onAbrirLista }) {
   const hoje = dayOccurrences(todayKey, agendaItems, recorrentes, checks, todayKey);
   const remediosPendentes = hoje.filter((o) => o.kind === "remedio" && o.status !== "done");
   const compromissosHoje = hoje.filter((o) => o.kind === "compromisso" && !o.item.concluido);
@@ -568,7 +568,7 @@ export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onAbr
 
           {dosesEmAtraso > 0 && (
             <button
-              onClick={() => onAbrirSemana(todayKey, "doses")}
+              onClick={() => onAbrirLista(todayKey, "doses")}
               style={{ ...linhaAtraso, marginBottom: atrasados.length > 0 ? 6 : 0 }}
             >
               <AlertCircle size={16} strokeWidth={2.4} style={{ flexShrink: 0 }} />
@@ -583,7 +583,7 @@ export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onAbr
 
           {atrasados.length > 0 && (
             <button
-              onClick={() => onAbrirSemana(atrasados.slice().sort((a, b) => (a.data > b.data ? 1 : -1))[0].data, "compromissos")}
+              onClick={() => onAbrirLista(atrasados.slice().sort((a, b) => (a.data > b.data ? 1 : -1))[0].data, "compromissos")}
               style={linhaAtraso}
             >
               <AlertCircle size={16} strokeWidth={2.4} style={{ flexShrink: 0 }} />
@@ -620,21 +620,21 @@ export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onAbr
             }
             cor={remediosPendentes.length > 0 ? STATUS_STYLE.late.fg : TEAL}
             fundo={remediosPendentes.length > 0 ? STATUS_STYLE.late.bg : "rgba(59,110,100,0.09)"}
-            onClick={remediosPendentes.length > 0 ? () => onAbrirSemana(todayKey, "doses") : undefined}
+            onClick={remediosPendentes.length > 0 ? () => onAbrirLista(todayKey, "doses") : undefined}
           />
           <ResumoTile
             valor={compromissosHoje.length}
             rotulo={compromissosHoje.length === 1 ? "compromisso hoje" : "compromissos hoje"}
             cor={compromissosHoje.length > 0 ? STATUS_STYLE.late.fg : GREY}
             fundo={compromissosHoje.length > 0 ? STATUS_STYLE.late.bg : "rgba(42,42,42,0.05)"}
-            onClick={compromissosHoje.length > 0 ? () => onAbrirSemana(todayKey, "compromissos") : undefined}
+            onClick={compromissosHoje.length > 0 ? () => onAbrirLista(todayKey, "compromissos") : undefined}
           />
         </div>
       )}
 
       {proximo && (
         <button
-          onClick={() => onAbrirSemana(proximo.data, "compromissos")}
+          onClick={() => onAbrirLista(proximo.data, "compromissos")}
           style={{
             width: "100%", textAlign: "left", border: "none", background: "rgba(42,42,42,0.04)",
             borderRadius: 12, padding: "10px 12px", cursor: "pointer", marginTop: 4,

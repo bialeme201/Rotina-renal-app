@@ -1203,9 +1203,10 @@ export default function App() {
 
   // Do resumo para o detalhe: leva à semana daquele dia e rola até lá, porque
   // o quadro da semana fica abaixo do resumo e a troca passaria despercebida.
-  function abrirNaSemana(key, filtro) {
+  // Vem dos atalhos do resumo. Não troca a visão: filtrar em Mês jogava a
+  // pessoa para Semana sem ela ter pedido. Cada visão tem a sua listagem.
+  function abrirListaFiltrada(key, filtro) {
     goToDay(key);
-    setAgendaView("Semana");
     setAgendaFiltro(filtro || null);
     rolarAteLista();
   }
@@ -2095,7 +2096,7 @@ export default function App() {
               agendaItems={agendaItems}
               recorrentes={recorrentes}
               checks={recorrenteChecks}
-              onAbrirSemana={abrirNaSemana}
+              onAbrirLista={abrirListaFiltrada}
             />
 
             <div ref={agendaViewsRef} style={{ marginBottom: 14, scrollMarginTop: 12 }}>
