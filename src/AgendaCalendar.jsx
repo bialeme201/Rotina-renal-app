@@ -2,7 +2,7 @@ import { ChevronLeft, ChevronRight, Check, AlertCircle } from "lucide-react";
 import { TEAL, TERRACOTTA, INK, GREY } from "./theme.js";
 import {
   WEEKDAY_LETTERS, monthGrid, monthKeyOf, formatMonthLabel, parseDateKey,
-  weekDays, medStatus, medHorarios, medFrequenciaLabel, doseLabel, agendaStatus,
+  weekDays, addDays, medStatus, medHorarios, medFrequenciaLabel, doseLabel, agendaStatus,
   agendaTitulo, agendaResumoExames, jejumInfo, dayOccurrences, formatDayLabel,
   daysUntilLabel, lembretesLabel, formatDuration,
 } from "./agendaLogic.js";
@@ -514,13 +514,56 @@ export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onAbr
 
   const atrasados = agendaItems.filter((it) => agendaStatus(it, todayKey) === "late");
 
-  if (hoje.length === 0 && !proximo && atrasados.length === 0) return null;
+  // Doses de dias anteriores que ficaram sem marcação. Janela de 7 dias: longe
+  // o bastante para não ser só "hoje", curta o bastante para o número seguir
+  // sendo uma coisa que dá para resolver.
+  const dosesEmAtraso = Array.from({ length: 7 }, (_, i) => addDays(todayKey, i - 7))
+    .reduce((total, dia) => total + recorrentes.filter((med) => medStatus(med, dia, checks, todayKey) === "late").length, 0);
+
+  const tudoEmDia = dosesEmAtraso === 0 && atrasados.length === 0;
+
+  if (recorrentes.length === 0 && agendaItems.length === 0) return null;
 
   return (
     <div style={{ ...cardStyle, padding: "18px 18px 16px", marginBottom: 14 }}>
       <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 13.5, marginBottom: 10 }}>
         Hoje
       </div>
+
+      {/* Pendência acumulada vem antes do resto: é o único item do cartão que
+          fala de dias que já passaram, e é o que corre risco de ser esquecido. */}
+      {dosesEmAtraso > 0 && (
+        <button
+          onClick={() => onAbrirSemana(todayKey)}
+          style={{
+            width: "100%", display: "flex", alignItems: "center", gap: 10, marginBottom: 10,
+            padding: "12px 14px", borderRadius: 12, cursor: "pointer", border: "none",
+            background: STATUS_STYLE.late.bg, color: STATUS_STYLE.late.fg,
+            fontFamily: "inherit", textAlign: "left",
+          }}
+        >
+          <AlertCircle size={17} strokeWidth={2.4} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1, fontSize: 12, fontWeight: 700, lineHeight: 1.4 }}>
+            {dosesEmAtraso === 1
+              ? "1 dose de dias anteriores ficou sem marcação"
+              : `${dosesEmAtraso} doses de dias anteriores ficaram sem marcação`}
+          </span>
+          <ChevronRight size={16} strokeWidth={2.4} style={{ flexShrink: 0 }} />
+        </button>
+      )}
+
+      {tudoEmDia && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10, marginBottom: 10,
+          padding: "12px 14px", borderRadius: 12,
+          background: "rgba(59,110,100,0.10)", color: TEAL,
+        }}>
+          <Check size={17} strokeWidth={3} style={{ flexShrink: 0 }} />
+          <span style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.4 }}>
+            Tudo em dia — nada ficou para trás.
+          </span>
+        </div>
+      )}
 
       {hoje.length === 0 ? (
         <div style={{ fontSize: 12.5, color: GREY }}>Nada marcado para hoje.</div>
