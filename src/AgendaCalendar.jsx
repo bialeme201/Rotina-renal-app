@@ -527,8 +527,15 @@ export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onAbr
   // Doses de dias anteriores que ficaram sem marcação. Janela de 7 dias: longe
   // o bastante para não ser só "hoje", curta o bastante para o número seguir
   // sendo uma coisa que dá para resolver.
-  const dosesEmAtraso = Array.from({ length: 7 }, (_, i) => addDays(todayKey, i - 7))
-    .reduce((total, dia) => total + recorrentes.filter((med) => medStatus(med, dia, checks, todayKey) === "late").length, 0);
+  const diasComAtraso = Array.from({ length: 7 }, (_, i) => addDays(todayKey, i - 7))
+    .filter((dia) => recorrentes.some((med) => medStatus(med, dia, checks, todayKey) === "late"));
+  const dosesEmAtraso = diasComAtraso.reduce(
+    (total, dia) => total + recorrentes.filter((med) => medStatus(med, dia, checks, todayKey) === "late").length,
+    0
+  );
+  // O destino é o dia mais antigo com pendência, não hoje: as doses podem ser
+  // de outra semana, e abrir em hoje mostrava uma lista vazia.
+  const diaDoAtraso = diasComAtraso[0] || todayKey;
 
   const tudoEmDia = dosesEmAtraso === 0 && atrasados.length === 0;
 
@@ -568,14 +575,17 @@ export function TodaySummary({ todayKey, agendaItems, recorrentes, checks, onAbr
 
           {dosesEmAtraso > 0 && (
             <button
-              onClick={() => onAbrirLista(todayKey, "doses")}
+              onClick={() => onAbrirLista(diaDoAtraso, "doses")}
               style={{ ...linhaAtraso, marginBottom: atrasados.length > 0 ? 6 : 0 }}
             >
               <AlertCircle size={16} strokeWidth={2.4} style={{ flexShrink: 0 }} />
               <span style={{ flex: 1, fontSize: 12, fontWeight: 700, lineHeight: 1.4 }}>
-                {dosesEmAtraso === 1
-                  ? "1 dose sem marcação"
-                  : `${dosesEmAtraso} doses sem marcação`}
+                {dosesEmAtraso === 1 ? "1 dose sem marcação" : `${dosesEmAtraso} doses sem marcação`}
+                <span style={{ display: "block", fontWeight: 500, fontSize: 10.5, opacity: 0.85 }}>
+                  {diasComAtraso.length === 1
+                    ? `em ${parseDateKey(diaDoAtraso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}`
+                    : `desde ${parseDateKey(diaDoAtraso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} · ${diasComAtraso.length} dias`}
+                </span>
               </span>
               <ChevronRight size={16} strokeWidth={2.4} style={{ flexShrink: 0 }} />
             </button>
